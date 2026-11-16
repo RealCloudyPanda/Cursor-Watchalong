@@ -38,6 +38,8 @@ export interface GuestState {
   roster: Participant[];
   me?: Participant;
   mediaState: MediaState | null;
+  /** When mediaState arrived, for local clock extrapolation. */
+  mediaAt: number;
   viewport: { width: number; height: number } | null;
 }
 
@@ -76,6 +78,7 @@ export class GuestSession {
     peer: "connecting",
     roster: [],
     mediaState: null,
+    mediaAt: 0,
     viewport: null,
   };
 
@@ -369,7 +372,7 @@ export class GuestSession {
         break;
       }
       case "media-state":
-        this.setState({ mediaState: message.state });
+        this.setState({ mediaState: message.state, mediaAt: Date.now() });
         break;
       case "tab-info":
         this.setState({ viewport: message.viewport });

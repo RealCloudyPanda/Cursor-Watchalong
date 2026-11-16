@@ -47,6 +47,7 @@ chrome.runtime.onMessage.addListener((message: ExtMessage, sender) => {
       break;
     case "set-drawing":
       bridge?.setDrawing(message.drawing);
+      sendExt({ target: "background", type: "drawing-changed", drawing: message.drawing });
       break;
     case "end":
       generation += 1;
@@ -100,7 +101,11 @@ async function start(streamId: string, tabId: number, hostName: string) {
     onMediaState: (state) => current.updateMediaState(state),
     onViewport: (viewport) => current.updateViewport(viewport),
     getRoster: () => current.roster,
+    onDrawingChanged: (drawing) =>
+      sendExt({ target: "background", type: "drawing-changed", drawing }),
   });
+  // The bridge is listening now, so the content script can connect.
+  sendExt({ target: "background", type: "inject-overlay", tabId });
 
   // If the host stops capture from Chrome's own UI, end the session.
   for (const track of stream.getTracks()) {

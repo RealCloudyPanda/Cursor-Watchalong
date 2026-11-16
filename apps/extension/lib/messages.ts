@@ -41,6 +41,8 @@ export type ExtMessage =
   | { target: "offscreen"; type: "end" }
   // offscreen → background
   | { target: "background"; type: "host-state"; host: HostState }
+  | { target: "background"; type: "inject-overlay"; tabId: number }
+  | { target: "background"; type: "drawing-changed"; drawing: boolean }
   | { target: "background"; type: "offscreen-error"; error: string };
 
 export const SESSION_KEY = "session";

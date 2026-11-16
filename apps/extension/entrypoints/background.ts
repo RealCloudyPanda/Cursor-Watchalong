@@ -53,6 +53,12 @@ export default defineBackground(() => {
           if (s.status === "ended") await closeOffscreen();
         });
         break;
+      case "inject-overlay":
+        injectOverlay(message.tabId).catch(() => {});
+        break;
+      case "drawing-changed":
+        patchSession({ drawing: message.drawing });
+        break;
       case "offscreen-error":
         serialize(() => failStart(message.error));
         break;
@@ -147,7 +153,46 @@ async function ensureOffscreen() {
   });
 }
 
+const OVERLAY_ID = "watchalong-overlay";
+const OVERLAY_FILE = "content-scripts/overlay.js";
+
+/**
+ * Run the overlay in the shared tab. With the optional all-sites permission it is registered
+ * for every frame and future navigation (it goes inert in any other tab); without it, it's
+ * injected once into the current page only.
+ */
+async function injectOverlay(tabId: number) {
+  const session = await readSession();
+  if (session.tabId !== tabId || (session.status !== "live" && session.status !== "starting")) {
+    return;
+  }
+  const allSites = await chrome.permissions.contains({ origins: ["<all_urls>"] });
+  if (allSites) {
+    await chrome.scripting.unregisterContentScripts({ ids: [OVERLAY_ID] }).catch(() => {});
+    await chrome.scripting
+      .registerContentScripts([
+        {
+          id: OVERLAY_ID,
+          js: [OVERLAY_FILE],
+          matches: ["<all_urls>"],
+          allFrames: true,
+          runAt: "document_idle",
+          persistAcrossSessions: false,
+        },
+      ])
+      .catch(() => {});
+  }
+  await chrome.scripting
+    .executeScript({ target: { tabId, allFrames: allSites }, files: [OVERLAY_FILE] })
+    .catch(() => {});
+}
+
+async function removeOverlay() {
+  await chrome.scripting.unregisterContentScripts({ ids: [OVERLAY_ID] }).catch(() => {});
+}
+
 async function closeOffscreen() {
+  await removeOverlay();
   await chrome.offscreen.closeDocument().catch(() => {});
 }
 

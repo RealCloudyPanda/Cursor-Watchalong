@@ -33,10 +33,7 @@
         "noLabelWithoutControl": {
           "level": "error",
           "options": {
-            "inputComponents": [
-              "Switch",
-              "Input"
-            ]
+            "inputComponents": ["Switch", "Input"]
           }
         }
       }
@@ -56,10 +53,7 @@
   },
   "overrides": [
     {
-      "includes": [
-        "apps/web/e2e/**",
-        "apps/web/e2e-harness/**"
-      ],
+      "includes": ["apps/web/e2e/**", "apps/web/e2e-harness/**"],
       "linter": {
         "rules": {
           "suspicious": {
