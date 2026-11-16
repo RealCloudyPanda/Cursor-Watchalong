@@ -1,0 +1,25 @@
+{
+  "name": "cursor-watchalong",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.14.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:server": "pnpm --filter @watchalong/server dev",
+    "dev:web": "pnpm --filter @watchalong/web dev",
+    "dev:ext": "pnpm --filter @watchalong/extension dev",
+    "build": "pnpm -r build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "biome check .",
+    "format": "biome check --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.8",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}
