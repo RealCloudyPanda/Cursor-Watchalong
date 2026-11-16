@@ -1,28 +1,60 @@
 import { isLikelyDrmHost } from "@watchalong/protocol";
 import { defineBackground } from "wxt/utils/define-background";
-import { type ExtMessage, IDLE_SESSION } from "../lib/messages";
-import { patchSession, readSession } from "../lib/session";
+import { type ExtMessage, HOST_NAME_KEY, IDLE_SESSION, sendExt } from "../lib/messages";
+import { patchSession, readSession, replaceSession } from "../lib/session";
 
 const OFFSCREEN_PATH = "/offscreen.html";
+
+class AlreadyRunningError extends Error {}
+
+/** Serializes start/stop so a stale timer or rejected request can never touch a newer session. */
+let lifecycle: Promise<unknown> = Promise.resolve();
+function serialize<T>(task: () => Promise<T>): Promise<T> {
+  const run = lifecycle.then(task, task);
+  lifecycle = run.catch(() => undefined);
+  return run;
+}
 
 export default defineBackground(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
 
-  chrome.runtime.onMessage.addListener((message: ExtMessage) => {
+  chrome.runtime.onMessage.addListener((message: ExtMessage, sender) => {
     if (message.target !== "background") return;
+    // Only our own extension pages may drive the session.
+    if (sender.id !== chrome.runtime.id || sender.tab) return;
     switch (message.type) {
       case "start-sharing":
-        startSharing(message.tabId).catch((err: unknown) =>
-          patchSession({ status: "idle", error: String(err) }),
+        serialize(() =>
+          startSharing(message.tabId).catch(async (err: unknown) => {
+            if (err instanceof AlreadyRunningError) {
+              await patchSession({ error: err.message });
+              return;
+            }
+            await failStart(err);
+          }),
         );
         break;
       case "stop-sharing":
-        stopSharing();
+        serialize(stopSharing);
         break;
-      case "session-update":
-        patchSession(message.patch).then((s) => {
-          if (s.status === "ended") closeOffscreen();
+      case "focus-shared-tab":
+        focusSharedTab();
+        break;
+      case "host-state":
+        serialize(async () => {
+          const current = await readSession();
+          // Ignore late updates from a session that was already stopped.
+          if (current.status !== "live" && current.status !== "starting") return;
+          const s = await patchSession({
+            host: message.host,
+            status: message.host.status === "ended" ? "ended" : "live",
+            error: message.host.error,
+          });
+          if (s.status === "ended") await closeOffscreen();
         });
+        break;
+      case "offscreen-error":
+        serialize(() => failStart(message.error));
         break;
     }
   });
@@ -30,31 +62,77 @@ export default defineBackground(() => {
   // Closing the shared tab ends the session immediately.
   chrome.tabs.onRemoved.addListener(async (tabId) => {
     const session = await readSession();
-    if (session.tabId === tabId && session.status !== "idle") stopSharing();
+    if (session.tabId === tabId && (session.status === "live" || session.status === "starting")) {
+      serialize(stopSharing);
+    }
+  });
+
+  // Keep the side panel's title in sync when the shared tab navigates.
+  chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
+    if (!info.title && !info.url) return;
+    const session = await readSession();
+    if (session.tabId !== tabId || session.status !== "live") return;
+    const host = safeHostname(tab.url);
+    patchSession({ tabTitle: tab.title, tabHost: host, drmWarning: isLikelyDrmHost(host) });
   });
 });
 
 async function startSharing(tabId: number) {
+  const current = await readSession();
+  if (current.status === "live" || current.status === "starting") {
+    throw new AlreadyRunningError(
+      "A session is already running. End it before sharing another tab.",
+    );
+  }
   const tab = await chrome.tabs.get(tabId);
-  const hostname = tab.url ? new URL(tab.url).hostname : "";
-  await chrome.storage.session.set({ session: { ...IDLE_SESSION, status: "starting", tabId } });
-  await patchSession({ drmWarning: isLikelyDrmHost(hostname) });
+  const host = safeHostname(tab.url);
+  if (tab.url && /^(chrome|edge|about|chrome-extension|devtools|view-source):/.test(tab.url)) {
+    throw new Error("Chrome doesn't allow sharing this kind of page. Open a website first.");
+  }
+  await replaceSession({
+    ...IDLE_SESSION,
+    status: "starting",
+    tabId,
+    tabTitle: tab.title,
+    tabHost: host,
+    drmWarning: isLikelyDrmHost(host),
+  });
 
-  // Must run while the user's action-click invocation on this tab is still valid.
-  const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
   await ensureOffscreen();
-  const stored = await chrome.storage.local.get("hostName");
-  const hostName = typeof stored.hostName === "string" ? stored.hostName : "Host";
-  const msg: ExtMessage = { target: "offscreen", type: "start", streamId, hostName };
-  await chrome.runtime.sendMessage(msg);
-  // M3: inject the overlay content script into tabId (scripting.executeScript, allFrames).
+  const stored = await chrome.storage.local.get(HOST_NAME_KEY);
+  const hostName =
+    typeof stored[HOST_NAME_KEY] === "string" && stored[HOST_NAME_KEY].trim()
+      ? stored[HOST_NAME_KEY].trim().slice(0, 32)
+      : "Host";
+  // Stream IDs expire after a few seconds, so mint it last, right before it's consumed.
+  const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
+  await sendExt({ target: "offscreen", type: "start", streamId, tabId, hostName });
 }
 
-function stopSharing() {
-  const msg: ExtMessage = { target: "offscreen", type: "end" };
-  chrome.runtime.sendMessage(msg).catch(() => {});
-  patchSession({ status: "ended" });
-  closeOffscreen();
+async function failStart(err: unknown) {
+  const error = err instanceof Error ? err.message : String(err);
+  await replaceSession({ ...IDLE_SESSION, error });
+  await closeOffscreen();
+}
+
+async function stopSharing() {
+  const session = await readSession();
+  if (session.status === "idle" || session.status === "ended") {
+    await closeOffscreen();
+    return;
+  }
+  await patchSession({ status: "ended" });
+  await sendExt({ target: "offscreen", type: "end" });
+  // Give the offscreen document a moment to tell the server before it's closed.
+  await new Promise((r) => setTimeout(r, 300));
+  await closeOffscreen();
+}
+
+async function focusSharedTab() {
+  const { tabId } = await readSession();
+  if (tabId === undefined) return;
+  const tab = await chrome.tabs.update(tabId, { active: true }).catch(() => null);
+  if (tab?.windowId !== undefined) chrome.windows.update(tab.windowId, { focused: true });
 }
 
 async function ensureOffscreen() {
@@ -69,6 +147,14 @@ async function ensureOffscreen() {
   });
 }
 
-function closeOffscreen() {
-  chrome.offscreen.closeDocument().catch(() => {});
+async function closeOffscreen() {
+  await chrome.offscreen.closeDocument().catch(() => {});
+}
+
+function safeHostname(url: string | undefined): string {
+  try {
+    return url ? new URL(url).hostname : "";
+  } catch {
+    return "";
+  }
 }

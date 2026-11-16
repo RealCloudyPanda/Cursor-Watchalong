@@ -1,4 +1,8 @@
 export const MAX_GUESTS = 4;
+/** Unanswered join requests per room; extra requests are rejected. */
+export const MAX_PENDING = 8;
+/** An unanswered join request is withdrawn after this long. */
+export const PENDING_TTL_MS = 10 * 60_000;
 export const MAX_MESSAGE_BYTES = 16 * 1024;
 export const HOST_RECONNECT_GRACE_MS = 30_000;
 export const REJOIN_TOKEN_TTL_MS = 5 * 60_000;

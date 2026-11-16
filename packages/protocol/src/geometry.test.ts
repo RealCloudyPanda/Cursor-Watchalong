@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contentRect, denormalize, normalizeInRect } from "./geometry";
+import { contentRect, denormalize, normalizeInRect, sharedContentRect } from "./geometry";
 
 describe("contentRect", () => {
   it("letterboxes a 16:9 video inside a taller element", () => {
@@ -53,5 +53,37 @@ describe("denormalize", () => {
       x: 320,
       y: 360,
     });
+  });
+});
+
+describe("sharedContentRect", () => {
+  it("matches contentRect when the frame already has the viewport's aspect", () => {
+    expect(
+      sharedContentRect(
+        { width: 800, height: 600 },
+        { width: 1920, height: 1080 },
+        { width: 1280, height: 720 },
+      ),
+    ).toEqual({ left: 0, top: 75, width: 800, height: 450 });
+  });
+
+  it("accounts for letterboxing inside the captured frame", () => {
+    // 4:3 tab captured into a 16:9 frame shown in a 16:9 element → pillarboxed 4:3 area.
+    expect(
+      sharedContentRect(
+        { width: 1600, height: 900 },
+        { width: 1920, height: 1080 },
+        { width: 1200, height: 900 },
+      ),
+    ).toEqual({ left: 200, top: 0, width: 1200, height: 900 });
+  });
+});
+
+describe("degenerate rects", () => {
+  it("returns null instead of NaN for zero-sized rects", () => {
+    expect(normalizeInRect({ x: 0, y: 0 }, { left: 0, top: 0, width: 0, height: 0 })).toBeNull();
+    expect(
+      normalizeInRect({ x: 0, y: 0 }, { left: 0, top: 0, width: 0, height: 0 }, { clamp: true }),
+    ).toBeNull();
   });
 });

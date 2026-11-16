@@ -7,17 +7,25 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@watchalong/protocol": "workspace:*",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "@watchalong/ui": "workspace:*",
+    "lucide-react": "^1.73.0",
+    "sonner": "^2.0.8"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",
-    "vite": "^8.3.8"
+    "vite": "^8.3.8",
+    "@tailwindcss/vite": "^4.3.5",
+    "tailwindcss": "^4.3.5",
+    "@watchalong/host-core": "workspace:*",
+    "@playwright/test": "^1.65.1"
   }
 }

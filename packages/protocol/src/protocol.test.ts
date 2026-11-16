@@ -59,3 +59,15 @@ describe("isLikelyDrmHost", () => {
     expect(isLikelyDrmHost("www.youtube.com")).toBe(false);
   });
 });
+
+describe("parseWire byte limit", () => {
+  it("counts UTF-8 bytes, not UTF-16 code units", () => {
+    const sdp = "界".repeat(6_000); // 6k code units, 18k bytes
+    const raw = JSON.stringify({
+      type: "signal",
+      to: "abcdefgh",
+      payload: { description: { type: "offer", sdp } },
+    });
+    expect(parseWire(ClientMessage, raw)).toEqual({ ok: false, error: "too-large" });
+  });
+});

@@ -79,7 +79,13 @@ export const ServerMessage = z.discriminatedUnion("type", [
     hostToken: Secret,
     iceServers: z.array(IceServer),
   }),
-  z.object({ type: z.literal("host-resumed"), roomId: RoomId }),
+  z.object({
+    type: z.literal("host-resumed"),
+    roomId: RoomId,
+    guests: z.array(z.object({ guestId: PeerId, name: DisplayName, seq: z.number().int().min(0) })),
+    pending: z.array(z.object({ guestId: PeerId, name: DisplayName })),
+    iceServers: z.array(IceServer),
+  }),
   z.object({ type: z.literal("waiting-for-host"), guestId: PeerId }),
   z.object({ type: z.literal("join-request"), guestId: PeerId, name: DisplayName }),
   z.object({
@@ -89,7 +95,13 @@ export const ServerMessage = z.discriminatedUnion("type", [
     rejoinToken: Secret,
     iceServers: z.array(IceServer),
   }),
-  z.object({ type: z.literal("guest-joined"), guestId: PeerId, name: DisplayName }),
+  /** `seq` changes every time the guest is (re)admitted, i.e. whenever it has a new connection. */
+  z.object({
+    type: z.literal("guest-joined"),
+    guestId: PeerId,
+    name: DisplayName,
+    seq: z.number().int().min(0),
+  }),
   z.object({ type: z.literal("guest-left"), guestId: PeerId }),
   z.object({ type: z.literal("denied") }),
   z.object({ type: z.literal("kicked") }),

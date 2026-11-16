@@ -18,7 +18,7 @@ export interface Point {
  * relative to the element's top-left corner.
  */
 export function contentRect(element: Size, video: Size): Rect {
-  if (video.width <= 0 || video.height <= 0) {
+  if (!(video.width > 0 && video.height > 0) || !(element.width > 0 && element.height > 0)) {
     return { left: 0, top: 0, width: element.width, height: element.height };
   }
   const scale = Math.min(element.width / video.width, element.height / video.height);
@@ -40,6 +40,7 @@ export function normalizeInRect(
   rect: Rect,
   options: { clamp?: boolean } = {},
 ): Point | null {
+  if (!(rect.width > 0 && rect.height > 0) || !Number.isFinite(point.x + point.y)) return null;
   const x = (point.x - rect.left) / rect.width;
   const y = (point.y - rect.top) / rect.height;
   if (options.clamp) return { x: clamp01(x), y: clamp01(y) };
@@ -50,4 +51,21 @@ export function normalizeInRect(
 /** Normalized point → pixels in the host tab's viewport. */
 export function denormalize(point: Point, viewport: Size): Point {
   return { x: point.x * viewport.width, y: point.y * viewport.height };
+}
+
+/**
+ * Where the shared tab's viewport appears inside a guest's <video> element.
+ * First fit the video frame into the element (object-fit: contain), then, if Chrome
+ * letterboxed the tab inside the captured frame, fit the tab's viewport into that frame.
+ */
+export function sharedContentRect(element: Size, videoFrame: Size, viewport: Size | null): Rect {
+  const frame = contentRect(element, videoFrame);
+  if (!viewport) return frame;
+  const inner = contentRect({ width: frame.width, height: frame.height }, viewport);
+  return {
+    left: frame.left + inner.left,
+    top: frame.top + inner.top,
+    width: inner.width,
+    height: inner.height,
+  };
 }

@@ -6,7 +6,17 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/.wxt", "!**/.output", "!**/dist", "!**/*.md"]
+    "includes": [
+      "**",
+      "!**/.wxt",
+      "!**/.output",
+      "!**/dist",
+      "!**/*.md",
+      "!packages/ui/src/components/ui",
+      "!**/*.svg",
+      "!**/test-results",
+      "!**/playwright-report"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -17,7 +27,19 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "preset": "recommended"
+      "preset": "recommended",
+      "a11y": {
+        "useMediaCaption": "off",
+        "noLabelWithoutControl": {
+          "level": "error",
+          "options": {
+            "inputComponents": [
+              "Switch",
+              "Input"
+            ]
+          }
+        }
+      }
     }
   },
   "assist": {
@@ -26,5 +48,25 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "apps/web/e2e/**",
+        "apps/web/e2e-harness/**"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off"
+          }
+        }
+      }
+    }
+  ]
 }

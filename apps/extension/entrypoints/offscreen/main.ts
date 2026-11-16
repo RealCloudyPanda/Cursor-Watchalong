@@ -1,47 +1,64 @@
-import { CAPTURE_CONSTRAINTS, parseWire, ServerMessage } from "@watchalong/protocol";
+import { HostSession } from "@watchalong/host-core";
+import { CAPTURE_CONSTRAINTS } from "@watchalong/protocol";
 import { PUBLIC_ORIGIN, WS_URL } from "../../lib/config";
-import type { ExtMessage, JoinRequest, SessionState } from "../../lib/messages";
+import { type ExtMessage, sendExt } from "../../lib/messages";
+import { TabBridge } from "./tab-bridge";
 
 /**
- * Owns the captured MediaStream, the signaling WebSocket and (M1+) one RTCPeerConnection per guest.
- * Lives as long as the session so the service worker can sleep.
+ * The host engine. Owns the captured MediaStream, plays the tab's audio back locally,
+ * and runs the HostSession (signaling + one WebRTC connection per guest).
+ * Lives for the whole session so the service worker can sleep.
  */
 
+let session: HostSession | null = null;
 let stream: MediaStream | null = null;
-let ws: WebSocket | null = null;
-let pending: JoinRequest[] = [];
-let guests: JoinRequest[] = [];
+let audioCtx: AudioContext | null = null;
+let bridge: TabBridge | null = null;
+/** Bumped by every start and end so a cancelled start can't publish a live session. */
+let generation = 0;
 
-function update(patch: Partial<SessionState>) {
-  const msg: ExtMessage = { target: "background", type: "session-update", patch };
-  chrome.runtime.sendMessage(msg).catch(() => {});
-}
-
-function send(message: object) {
-  ws?.send(JSON.stringify(message));
-}
-
-chrome.runtime.onMessage.addListener((message: ExtMessage) => {
-  if (message.target !== "offscreen") return;
+chrome.runtime.onMessage.addListener((message: ExtMessage, sender) => {
+  if (message.target !== "offscreen" || sender.id !== chrome.runtime.id) return;
   switch (message.type) {
     case "start":
-      start(message.streamId, message.hostName).catch((err: unknown) =>
-        update({ status: "idle", error: String(err) }),
-      );
+      start(message.streamId, message.tabId, message.hostName).catch((err: unknown) => {
+        stopCapture();
+        sendExt({
+          target: "background",
+          type: "offscreen-error",
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
       break;
     case "admit":
+      session?.admit(message.guestId);
+      break;
     case "deny":
-      send({ type: message.type, guestId: message.guestId });
-      pending = pending.filter((p) => p.guestId !== message.guestId);
-      update({ pending });
+      session?.deny(message.guestId);
+      break;
+    case "kick":
+      session?.kick(message.guestId);
+      break;
+    case "set-control":
+      session?.setControl(message.guestId, message.canControl);
+      break;
+    case "set-control-all":
+      session?.setControlForAll(message.canControl);
+      break;
+    case "set-drawing":
+      bridge?.setDrawing(message.drawing);
       break;
     case "end":
-      end();
+      generation += 1;
+      if (session) session.end("host-ended");
+      else stopCapture();
       break;
   }
 });
 
-async function start(streamId: string, hostName: string) {
+async function start(streamId: string, tabId: number, hostName: string) {
+  if (session && session.snapshot.status !== "ended") return;
+  const gen = ++generation;
   const tabSource = { chromeMediaSource: "tab", chromeMediaSourceId: streamId };
   stream = await navigator.mediaDevices.getUserMedia({
     audio: { mandatory: tabSource },
@@ -54,59 +71,49 @@ async function start(streamId: string, hostName: string) {
       },
     },
   } as unknown as MediaStreamConstraints);
+  if (gen !== generation) {
+    // Stopped while capture was starting: release it and publish nothing.
+    for (const track of stream.getTracks()) track.stop();
+    stream = null;
+    return;
+  }
 
-  // Tab capture mutes the tab for the host; play the audio back locally.
-  const audioCtx = new AudioContext();
+  // Tab capture mutes the tab for the host; play its audio back locally.
+  audioCtx = new AudioContext();
   audioCtx.createMediaStreamSource(stream).connect(audioCtx.destination);
 
-  // If the host stops capture from Chrome's UI, end the session.
-  stream.getVideoTracks()[0]?.addEventListener("ended", end);
+  const current = new HostSession({
+    wsUrl: WS_URL,
+    publicOrigin: PUBLIC_ORIGIN,
+    hostName,
+    stream,
+    onGuestMessage: (guest, message) => bridge?.deliverGuestMessage(guest, message),
+    onGuestGone: (guestId) => bridge?.guestGone(guestId),
+    onStateChange: (host) => {
+      bridge?.setRoster(current.roster);
+      sendExt({ target: "background", type: "host-state", host });
+      if (host.status === "ended") stopCapture();
+    },
+  });
+  session = current;
+  bridge = new TabBridge(tabId, {
+    onMediaState: (state) => current.updateMediaState(state),
+    onViewport: (viewport) => current.updateViewport(viewport),
+    getRoster: () => current.roster,
+  });
 
-  ws = new WebSocket(WS_URL);
-  ws.onopen = () => send({ type: "create-room", name: hostName });
-  ws.onmessage = (event) => {
-    const parsed = parseWire(ServerMessage, String(event.data));
-    if (!parsed.ok) return;
-    const msg = parsed.value;
-    switch (msg.type) {
-      case "room-created":
-        update({ status: "live", inviteUrl: `${PUBLIC_ORIGIN}/r/${msg.roomId}#k=${msg.secret}` });
-        break;
-      case "join-request":
-        pending = [...pending, { guestId: msg.guestId, name: msg.name }];
-        update({ pending });
-        break;
-      case "guest-joined":
-        guests = [...guests, { guestId: msg.guestId, name: msg.name }];
-        update({ guests });
-        // M1: create RTCPeerConnection, add stream tracks, send offer via `signal`.
-        break;
-      case "guest-left":
-        guests = guests.filter((g) => g.guestId !== msg.guestId);
-        update({ guests });
-        break;
-      case "signal":
-        // M1: apply remote description / ICE candidate to that guest's peer connection.
-        break;
-      case "room-ended":
-        end();
-        break;
-      case "error":
-        update({ error: msg.code });
-        break;
-    }
-  };
-  ws.onclose = () => {
-    // M5: resume-host within the 30s grace window instead of ending.
-    if (stream) end();
-  };
+  // If the host stops capture from Chrome's own UI, end the session.
+  for (const track of stream.getTracks()) {
+    track.addEventListener("ended", () => current.end("capture-ended"));
+  }
+  current.start();
 }
 
-function end() {
-  if (ws?.readyState === WebSocket.OPEN) send({ type: "end-room" });
-  ws?.close();
-  ws = null;
+function stopCapture() {
   for (const track of stream?.getTracks() ?? []) track.stop();
   stream = null;
-  update({ status: "ended", pending: [], guests: [] });
+  audioCtx?.close().catch(() => {});
+  audioCtx = null;
+  bridge?.dispose();
+  bridge = null;
 }

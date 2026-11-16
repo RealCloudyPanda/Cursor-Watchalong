@@ -195,4 +195,134 @@ describe("RoomRegistry", () => {
     });
     expect(again.last("waiting-for-host")).toBeDefined();
   });
+
+  it("revokes the rejoin token when a guest is kicked", () => {
+    const { host, created } = createRoom();
+    const { guest, guestId } = joinAndAdmit(host, created);
+    const { rejoinToken } = guest.last("admitted");
+    send(host, { type: "kick", guestId });
+    const again = new FakeConn();
+    send(again, {
+      type: "join",
+      roomId: created.roomId,
+      secret: created.secret,
+      name: "Sam",
+      rejoinToken,
+    });
+    expect(again.last("waiting-for-host")).toBeDefined();
+    expect(again.sent.some((m) => m.type === "admitted")).toBe(false);
+  });
+
+  it("keeps the rejoin token valid for the whole time the guest is connected", () => {
+    const { host, created } = createRoom();
+    const { guest, guestId } = joinAndAdmit(host, created);
+    const { rejoinToken } = guest.last("admitted");
+    vi.advanceTimersByTime(60 * 60_000);
+    registry.disconnect(guest);
+    const again = new FakeConn();
+    send(again, {
+      type: "join",
+      roomId: created.roomId,
+      secret: created.secret,
+      name: "Sam",
+      rejoinToken,
+    });
+    expect(again.last("admitted").guestId).toBe(guestId);
+  });
+
+  it("replaces a still-open connection when the guest reconnects with its token", () => {
+    const { host, created } = createRoom();
+    const { guest, guestId } = joinAndAdmit(host, created);
+    const { rejoinToken } = guest.last("admitted");
+    const again = new FakeConn();
+    send(again, {
+      type: "join",
+      roomId: created.roomId,
+      secret: created.secret,
+      name: "Sam",
+      rejoinToken,
+    });
+    expect(again.last("admitted").guestId).toBe(guestId);
+    expect(guest.closed).toBe(true);
+    // The late close of the old socket must not remove the new connection.
+    registry.disconnect(guest);
+    send(host, { type: "signal", to: guestId, payload: { candidate: null } });
+    expect(again.last("signal")).toBeDefined();
+  });
+
+  it("tells the host when a pending guest gives up", () => {
+    const { host, created } = createRoom();
+    const guest = new FakeConn();
+    send(guest, { type: "join", roomId: created.roomId, secret: created.secret, name: "Sam" });
+    const { guestId } = host.last("join-request");
+    registry.disconnect(guest);
+    expect(host.last("guest-left").guestId).toBe(guestId);
+  });
+
+  it("caps unanswered join requests per room", () => {
+    const { created } = createRoom();
+    for (let i = 0; i < 8; i++) {
+      send(new FakeConn(), {
+        type: "join",
+        roomId: created.roomId,
+        secret: created.secret,
+        name: `G${i}`,
+      });
+    }
+    const extra = new FakeConn();
+    send(extra, { type: "join", roomId: created.roomId, secret: created.secret, name: "Extra" });
+    expect(extra.last("error").code).toBe("rate-limited");
+  });
+
+  it("withdraws join requests the host never answers", () => {
+    const { host, created } = createRoom();
+    const guest = new FakeConn();
+    send(guest, { type: "join", roomId: created.roomId, secret: created.secret, name: "Sam" });
+    vi.advanceTimersByTime(10 * 60_000);
+    expect(guest.last("denied")).toBeDefined();
+    expect(host.last("guest-left")).toBeDefined();
+  });
+
+  it("gives a resuming host an authoritative snapshot of guests and requests", () => {
+    const { host, created } = createRoom();
+    const { guest, guestId } = joinAndAdmit(host, created, "Sam");
+    const { rejoinToken } = guest.last("admitted");
+    registry.disconnect(host);
+    registry.disconnect(guest);
+    // Guest rejoins while the host is away.
+    const again = new FakeConn();
+    send(again, {
+      type: "join",
+      roomId: created.roomId,
+      secret: created.secret,
+      name: "Sam",
+      rejoinToken,
+    });
+    const waiting = new FakeConn();
+    send(waiting, { type: "join", roomId: created.roomId, secret: created.secret, name: "Lee" });
+
+    const host2 = new FakeConn();
+    send(host2, { type: "resume-host", roomId: created.roomId, hostToken: created.hostToken });
+    const resumed = host2.last("host-resumed");
+    expect(resumed.guests).toEqual([{ guestId, name: "Sam", seq: 2 }]);
+    expect(resumed.pending.map((p) => p.name)).toEqual(["Lee"]);
+  });
+
+  it("rejects resume-host from a socket that already hosts another room", () => {
+    const a = createRoom();
+    const b = createRoom();
+    send(a.host, { type: "resume-host", roomId: b.created.roomId, hostToken: b.created.hostToken });
+    expect(a.host.last("error").code).toBe("bad-message");
+    send(b.host, { type: "end-room" });
+    send(a.host, { type: "end-room" });
+    expect(registry.roomCount).toBe(0);
+  });
+
+  it("drops guest signals silently while the host is away", () => {
+    const { host, created } = createRoom();
+    const { guest } = joinAndAdmit(host, created);
+    registry.disconnect(host);
+    send(guest, { type: "signal", to: created.hostId, payload: { candidate: null } });
+    expect(guest.sent.some((m) => m.type === "error")).toBe(false);
+  });
 });

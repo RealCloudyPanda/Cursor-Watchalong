@@ -2,7 +2,12 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ClientMessage, parseWire, type ServerMessage } from "@watchalong/protocol";
+import {
+  ClientMessage,
+  MAX_MESSAGE_BYTES,
+  parseWire,
+  type ServerMessage,
+} from "@watchalong/protocol";
 import { WebSocketServer } from "ws";
 import { defaultIceServers } from "./ice";
 import { RateLimiter } from "./rate-limit";
@@ -12,7 +17,7 @@ const PORT = Number(process.env.PORT ?? 8787);
 const WEB_DIST = resolve(fileURLToPath(new URL("../../web/dist", import.meta.url)));
 
 const registry = new RoomRegistry({ iceServers: defaultIceServers });
-const createLimiter = new RateLimiter(10, 60_000); // room creations per IP per minute
+const createLimiter = new RateLimiter(Number(process.env.ROOMS_PER_IP_PER_MIN ?? 10), 60_000);
 const messageLimiter = new RateLimiter(100, 1_000); // signaling messages per socket per second
 
 const MIME: Record<string, string> = {
@@ -27,7 +32,17 @@ const MIME: Record<string, string> = {
 };
 
 const http = createServer((req, res) => {
-  const url = new URL(req.url ?? "/", "http://localhost");
+  let url: URL;
+  try {
+    url = new URL(req.url ?? "/", "http://localhost");
+  } catch {
+    res.writeHead(400).end();
+    return;
+  }
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    res.writeHead(405).end();
+    return;
+  }
   if (url.pathname === "/healthz") {
     res.writeHead(200, { "content-type": "text/plain" }).end(`ok rooms=${registry.roomCount}`);
     return;
@@ -56,25 +71,68 @@ const http = createServer((req, res) => {
   createReadStream(file).pipe(res);
 });
 
-const wss = new WebSocketServer({ server: http, path: "/ws", maxPayload: 64 * 1024 });
+const wss = new WebSocketServer({
+  server: http,
+  path: "/ws",
+  maxPayload: MAX_MESSAGE_BYTES * 4,
+  perMessageDeflate: false,
+});
 let socketSeq = 0;
+
+/** A receiver that stops reading must not make us buffer unboundedly. */
+const MAX_BUFFERED_BYTES = 1024 * 1024;
+const HEARTBEAT_MS = 15_000;
+const connectionsPerIp = new Map<string, number>();
+const MAX_CONNECTIONS_PER_IP = 40;
 
 wss.on("connection", (ws, req) => {
   const ip =
     (req.headers["fly-client-ip"] as string | undefined) ?? req.socket.remoteAddress ?? "?";
+  const open = (connectionsPerIp.get(ip) ?? 0) + 1;
+  connectionsPerIp.set(ip, open);
+  if (open > MAX_CONNECTIONS_PER_IP) {
+    ws.close(1008, "too many connections");
+  }
   const socketKey = `s${socketSeq++}`;
+  let alive = true;
+  let strikes = 0;
   const conn: Conn = {
     send: (message: ServerMessage) => {
-      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(message));
+      if (ws.readyState !== ws.OPEN) return;
+      if (ws.bufferedAmount > MAX_BUFFERED_BYTES) {
+        ws.terminate();
+        return;
+      }
+      ws.send(JSON.stringify(message));
     },
     close: () => ws.close(),
   };
 
-  ws.on("message", (data) => {
-    if (!messageLimiter.allow(socketKey)) {
-      conn.send({ type: "error", code: "rate-limited" });
+  ws.on("pong", () => {
+    alive = true;
+  });
+  // Detect half-open sockets so host grace and guest slots are released on time.
+  const heartbeat = setInterval(() => {
+    if (!alive) {
+      ws.terminate();
       return;
     }
+    alive = false;
+    ws.ping();
+  }, HEARTBEAT_MS);
+
+  ws.on("error", () => ws.terminate());
+
+  ws.on("message", (data) => {
+    alive = true;
+    if (!messageLimiter.allow(socketKey)) {
+      // Persistent offenders are disconnected rather than answered.
+      strikes += 1;
+      if (strikes > 50) ws.terminate();
+      else if (strikes === 1) conn.send({ type: "error", code: "rate-limited" });
+      return;
+    }
+    strikes = 0;
     const parsed = parseWire(ClientMessage, data.toString());
     if (!parsed.ok) {
       conn.send({ type: "error", code: "bad-message", message: parsed.error });
@@ -87,7 +145,13 @@ wss.on("connection", (ws, req) => {
     registry.handle(conn, parsed.value);
   });
 
-  ws.on("close", () => registry.disconnect(conn));
+  ws.on("close", () => {
+    clearInterval(heartbeat);
+    const left = (connectionsPerIp.get(ip) ?? 1) - 1;
+    if (left <= 0) connectionsPerIp.delete(ip);
+    else connectionsPerIp.set(ip, left);
+    registry.disconnect(conn);
+  });
 });
 
 http.listen(PORT, () => {

@@ -5,6 +5,8 @@ import {
   HOST_RECONNECT_GRACE_MS,
   type IceServer,
   MAX_GUESTS,
+  MAX_PENDING,
+  PENDING_TTL_MS,
   REJOIN_TOKEN_TTL_MS,
   type ServerMessage,
 } from "@watchalong/protocol";
@@ -20,10 +22,15 @@ interface Guest {
   id: string;
   name: string;
   conn: Conn;
+  /** Admission counter; a new value means a new guest connection. */
+  seq?: number;
+  pendingTimer?: ReturnType<typeof setTimeout>;
 }
 
 interface RejoinGrant {
+  token: string;
   guestId: string;
+  /** Infinity while the guest is connected; the 5-minute window starts when they disconnect. */
   expiresAt: number;
 }
 
@@ -36,7 +43,9 @@ interface Room {
   hostGraceTimer: ReturnType<typeof setTimeout> | null;
   pending: Map<string, Guest>;
   guests: Map<string, Guest>;
+  /** Keyed by guest id: at most one live grant per guest. */
   rejoin: Map<string, RejoinGrant>;
+  admitSeq: number;
 }
 
 /** Where a connection sits, so messages can be routed without trusting client-supplied ids. */
@@ -47,6 +56,8 @@ type Membership =
 
 export interface RegistryOptions {
   iceServers: () => IceServer[];
+  /** Hard cap on concurrent rooms, as a memory safety net. */
+  maxRooms?: number;
 }
 
 const safeEqual = (a: string, b: string) => {
@@ -112,11 +123,19 @@ export class RoomRegistry {
     }
 
     if (membership.role === "pending") {
+      const guest = room.pending.get(membership.guestId);
+      if (guest?.conn !== conn) return;
+      clearTimeout(guest.pendingTimer);
       room.pending.delete(membership.guestId);
+      room.host?.send({ type: "guest-left", guestId: membership.guestId });
       return;
     }
 
+    const guest = room.guests.get(membership.guestId);
+    if (guest?.conn !== conn) return; // already replaced by a newer connection
     room.guests.delete(membership.guestId);
+    const grant = room.rejoin.get(membership.guestId);
+    if (grant) grant.expiresAt = Date.now() + REJOIN_TOKEN_TTL_MS;
     room.host?.send({ type: "guest-left", guestId: membership.guestId });
   }
 
@@ -124,6 +143,9 @@ export class RoomRegistry {
 
   private createRoom(conn: Conn) {
     if (this.members.has(conn)) return this.error(conn, "bad-message", "already in a room");
+    if (this.rooms.size >= (this.options.maxRooms ?? 10_000)) {
+      return this.error(conn, "rate-limited", "server busy");
+    }
     const room: Room = {
       id: newRoomId(),
       secret: newSecret(),
@@ -134,6 +156,7 @@ export class RoomRegistry {
       pending: new Map(),
       guests: new Map(),
       rejoin: new Map(),
+      admitSeq: 0,
     };
     this.rooms.set(room.id, room);
     this.members.set(conn, { role: "host", room });
@@ -148,6 +171,10 @@ export class RoomRegistry {
   }
 
   private resumeHost(conn: Conn, roomId: string, hostToken: string) {
+    const existing = this.members.get(conn);
+    if (existing && !(existing.role === "host" && existing.room.id === roomId)) {
+      return this.error(conn, "bad-message", "already in a room");
+    }
     const room = this.rooms.get(roomId);
     if (!room) return this.error(conn, "room-not-found");
     if (!safeEqual(room.hostToken, hostToken)) return this.error(conn, "not-host");
@@ -160,16 +187,26 @@ export class RoomRegistry {
     }
     room.host = conn;
     this.members.set(conn, { role: "host", room });
-    conn.send({ type: "host-resumed", roomId: room.id });
+    // Authoritative snapshot so the host can reconcile anything that changed while it was away.
+    conn.send({
+      type: "host-resumed",
+      roomId: room.id,
+      guests: [...room.guests.values()].map((g) => ({
+        guestId: g.id,
+        name: g.name,
+        seq: g.seq ?? 0,
+      })),
+      pending: [...room.pending.values()].map((g) => ({ guestId: g.id, name: g.name })),
+      iceServers: this.options.iceServers(),
+    });
     this.broadcastGuests(room, { type: "host-back" });
-    for (const g of room.pending.values()) {
-      conn.send({ type: "join-request", guestId: g.id, name: g.name });
-    }
   }
 
   private endRoom(room: Room) {
+    if (this.rooms.get(room.id) !== room) return;
     if (room.hostGraceTimer) clearTimeout(room.hostGraceTimer);
     this.rooms.delete(room.id);
+    for (const g of room.pending.values()) clearTimeout(g.pendingTimer);
     const everyone = [...room.guests.values(), ...room.pending.values()].map((g) => g.conn);
     for (const conn of everyone) {
       conn.send({ type: "room-ended" });
@@ -189,26 +226,55 @@ export class RoomRegistry {
     const room = this.rooms.get(message.roomId);
     if (!room) return this.error(conn, "room-not-found");
     if (!safeEqual(room.secret, message.secret)) return this.error(conn, "bad-secret");
-    if (room.guests.size >= MAX_GUESTS) return this.error(conn, "room-full");
 
-    const grant = message.rejoinToken ? room.rejoin.get(message.rejoinToken) : undefined;
-    if (grant && message.rejoinToken) {
-      room.rejoin.delete(message.rejoinToken);
-      if (grant.expiresAt >= Date.now() && !room.guests.has(grant.guestId)) {
-        return this.admitGuest(room, { id: grant.guestId, name: message.name, conn });
+    const grant = message.rejoinToken ? this.findGrant(room, message.rejoinToken) : undefined;
+    if (grant) {
+      const current = room.guests.get(grant.guestId);
+      if (current) {
+        // The old socket hasn't closed yet (overlapping reconnect): replace it atomically.
+        this.members.delete(current.conn);
+        current.conn.close();
+        room.guests.delete(grant.guestId);
       }
+      return this.admitGuest(room, { id: grant.guestId, name: message.name, conn });
     }
 
+    if (room.guests.size >= MAX_GUESTS) return this.error(conn, "room-full");
+    if (room.pending.size >= MAX_PENDING)
+      return this.error(conn, "rate-limited", "too many requests");
+
     const guest: Guest = { id: newPeerId(), name: message.name, conn };
+    guest.pendingTimer = setTimeout(() => {
+      if (room.pending.get(guest.id) !== guest) return;
+      room.pending.delete(guest.id);
+      this.members.delete(conn);
+      room.host?.send({ type: "guest-left", guestId: guest.id });
+      conn.send({ type: "denied" });
+      conn.close();
+    }, PENDING_TTL_MS);
     room.pending.set(guest.id, guest);
     this.members.set(conn, { role: "pending", room, guestId: guest.id });
     conn.send({ type: "waiting-for-host", guestId: guest.id });
     room.host?.send({ type: "join-request", guestId: guest.id, name: guest.name });
   }
 
+  private findGrant(room: Room, token: string): RejoinGrant | undefined {
+    const now = Date.now();
+    for (const grant of room.rejoin.values()) {
+      if (grant.expiresAt < now) {
+        room.rejoin.delete(grant.guestId);
+        continue;
+      }
+      if (safeEqual(grant.token, token)) return grant;
+    }
+    return undefined;
+  }
+
   private hostAction(conn: Conn, action: "admit" | "deny" | "kick", guestId: string) {
     this.withHost(conn, (room) => {
       if (action === "kick") {
+        // Revoke the rejoin grant first so a kicked guest can't silently come back.
+        room.rejoin.delete(guestId);
         const guest = room.guests.get(guestId);
         if (!guest) return this.error(conn, "unknown-peer");
         room.guests.delete(guestId);
@@ -221,6 +287,7 @@ export class RoomRegistry {
 
       const guest = room.pending.get(guestId);
       if (!guest) return this.error(conn, "unknown-peer");
+      clearTimeout(guest.pendingTimer);
       room.pending.delete(guestId);
 
       if (action === "deny") {
@@ -234,6 +301,7 @@ export class RoomRegistry {
         this.members.delete(guest.conn);
         this.error(guest.conn, "room-full");
         guest.conn.close();
+        conn.send({ type: "guest-left", guestId });
         return this.error(conn, "room-full");
       }
       this.admitGuest(room, guest);
@@ -241,12 +309,9 @@ export class RoomRegistry {
   }
 
   private admitGuest(room: Room, guest: Guest) {
-    this.pruneRejoinGrants(room);
+    guest.seq = ++room.admitSeq;
     const rejoinToken = newSecret();
-    room.rejoin.set(rejoinToken, {
-      guestId: guest.id,
-      expiresAt: Date.now() + REJOIN_TOKEN_TTL_MS,
-    });
+    room.rejoin.set(guest.id, { token: rejoinToken, guestId: guest.id, expiresAt: Infinity });
     room.guests.set(guest.id, guest);
     this.members.set(guest.conn, { role: "guest", room, guestId: guest.id });
     guest.conn.send({
@@ -256,14 +321,12 @@ export class RoomRegistry {
       rejoinToken,
       iceServers: this.options.iceServers(),
     });
-    room.host?.send({ type: "guest-joined", guestId: guest.id, name: guest.name });
-  }
-
-  private pruneRejoinGrants(room: Room) {
-    const now = Date.now();
-    for (const [token, grant] of room.rejoin) {
-      if (grant.expiresAt < now) room.rejoin.delete(token);
-    }
+    room.host?.send({
+      type: "guest-joined",
+      guestId: guest.id,
+      name: guest.name,
+      seq: guest.seq,
+    });
   }
 
   // ── Signaling relay ──────────────────────────────────────────
@@ -284,8 +347,9 @@ export class RoomRegistry {
     }
 
     // Guests may only signal the host; guest-to-guest traffic is relayed by the host.
-    if (to !== room.hostId || !room.host) return this.error(conn, "unknown-peer");
-    room.host.send({ type: "signal", from: membership.guestId, payload });
+    if (to !== room.hostId) return this.error(conn, "unknown-peer");
+    // While the host is reconnecting, drop silently; it renegotiates after resuming.
+    room.host?.send({ type: "signal", from: membership.guestId, payload });
   }
 
   // ── Helpers ──────────────────────────────────────────────────

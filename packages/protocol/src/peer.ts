@@ -55,10 +55,30 @@ export const Participant = z.object({
 });
 export type Participant = z.infer<typeof Participant>;
 
+export const MediaState = z.object({
+  hasVideo: z.boolean(),
+  paused: z.boolean(),
+  muted: z.boolean(),
+  currentTime: z.number().finite().min(0),
+  /** Seconds; 0 when unknown, Infinity is sent as 0 for live streams. */
+  duration: z.number().finite().min(0),
+  playbackRate: z.number().finite().min(0).max(16),
+});
+export type MediaState = z.infer<typeof MediaState>;
+
 export const HostMessage = z.discriminatedUnion("type", [
   z.object({ type: z.literal("welcome"), you: PeerId }),
-  z.object({ type: z.literal("roster"), participants: z.array(Participant) }),
+  z.object({ type: z.literal("roster"), participants: z.array(Participant).max(16) }),
   z.object({ type: z.literal("activity"), by: PeerId, text: z.string().max(120) }),
   z.object({ type: z.literal("command-rejected"), reason: z.enum(["no-control", "rate-limited"]) }),
+  z.object({ type: z.literal("media-state"), state: MediaState }),
+  /** Size of the shared tab's viewport in CSS pixels, used to map coordinates exactly. */
+  z.object({
+    type: z.literal("tab-info"),
+    viewport: z.object({
+      width: z.number().int().min(1).max(20_000),
+      height: z.number().int().min(1).max(20_000),
+    }),
+  }),
 ]);
 export type HostMessage = z.infer<typeof HostMessage>;

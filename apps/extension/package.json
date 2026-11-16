@@ -13,13 +13,19 @@
   "dependencies": {
     "@watchalong/protocol": "workspace:*",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "@watchalong/ui": "workspace:*",
+    "@watchalong/host-core": "workspace:*",
+    "lucide-react": "^1.73.0",
+    "sonner": "^2.0.8"
   },
   "devDependencies": {
     "@types/chrome": "^0.3.7",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@wxt-dev/module-react": "^1.2.2",
-    "wxt": "^0.21.5"
+    "wxt": "^0.21.5",
+    "@tailwindcss/vite": "^4.3.5",
+    "tailwindcss": "^4.3.5"
   }
 }
