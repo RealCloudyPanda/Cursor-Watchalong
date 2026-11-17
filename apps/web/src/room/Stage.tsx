@@ -4,8 +4,16 @@ import { Volume2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useStageGeometry } from "../hooks/useStageGeometry";
 import type { GuestSession, GuestState } from "../session/guest-session";
+import { InputLayer } from "./InputLayer";
 
-export function Stage({ state }: { session: GuestSession; state: GuestState }) {
+interface StageProps {
+  session: GuestSession;
+  state: GuestState;
+  drawing: boolean;
+  onNoControl: () => void;
+}
+
+export function Stage({ session, state, drawing, onNoControl }: StageProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [needsUnmute, setNeedsUnmute] = useState(false);
@@ -59,12 +67,15 @@ export function Stage({ state }: { session: GuestSession; state: GuestState }) {
         onLoadedData={() => setHasFrames(true)}
       />
       {!hasFrames && <StreamPlaceholder failed={state.peer === "failed"} />}
-      {rect && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute"
-          style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
-          data-testid="content-rect"
+      {rect && hasFrames && (
+        <InputLayer
+          rect={rect}
+          viewport={state.viewport}
+          color={state.me?.color ?? "#4dabf7"}
+          drawing={drawing}
+          canControl={!!state.me?.canControl}
+          send={(m) => session.send(m)}
+          onNoControl={onNoControl}
         />
       )}
       {needsUnmute && (
