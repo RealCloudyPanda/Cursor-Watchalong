@@ -211,8 +211,9 @@ Run a **single instance**: rooms live in memory, so a restart or redeploy ends e
 fly secrets set CF_TURN_KEY_ID=... CF_TURN_API_TOKEN=... ALLOWED_ORIGINS=https://cursor-watchalong.fly.dev,chrome-extension://<id>
 ```
 
-For a store build, put `WXT_PUBLIC_ORIGIN` and `WXT_WS_URL` in `apps/extension/.env.production`,
-then run `pnpm --filter @watchalong/extension zip`. Listing copy and permission justifications are in
+The live server runs at **https://cursor-watchalong.fly.dev** (one machine, `iad`).
+`apps/extension/.env.production` points store builds at it; run
+`pnpm --filter @watchalong/extension zip` to package. `pnpm dev:ext` still uses localhost. Listing copy and permission justifications are in
 [docs/store-listing.md](docs/store-listing.md); the privacy policy is served at `/privacy`.
 
 ## Roadmap
