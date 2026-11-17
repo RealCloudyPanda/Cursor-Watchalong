@@ -180,7 +180,11 @@ ice.start().finally(() => {
   http.listen(PORT, () => {
     console.log(
       `cursor-watchalong server on http://localhost:${PORT} (ws at /ws, TURN ${
-        ice.turnConfigured ? "on" : "off: STUN only"
+        ice.turnActive
+          ? "on"
+          : ice.turnConfigured
+            ? "configured but credentials failed: STUN only until a refresh succeeds"
+            : "off: STUN only"
       })`,
     );
   });

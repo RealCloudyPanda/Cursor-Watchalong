@@ -40,6 +40,11 @@ export class IceProvider {
     return !!(this.options.keyId && this.options.apiToken);
   }
 
+  /** True when valid TURN credentials are currently being handed out. */
+  get turnActive(): boolean {
+    return this.turnConfigured && this.now() < this.expiresAt;
+  }
+
   /** Fetch credentials now and keep them fresh. Safe to call without TURN configured. */
   async start(): Promise<void> {
     if (!this.turnConfigured) return;
