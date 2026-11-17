@@ -1,6 +1,6 @@
 /*
  * Cursor Watchalong design tokens (shadcn/ui + Tailwind v4).
- * Dark, cinematic surfaces so the shared video stays the focus, with a violet accent.
+ * Warm "living room at night" surfaces with a lamp-glow amber accent.
  * Each app imports tailwindcss, then this file, then adds an @source for this package.
  */
 @import "tw-animate-css";
@@ -11,41 +11,41 @@
   color-scheme: dark;
   --radius: 0.75rem;
 
-  --background: oklch(0.155 0.008 285);
-  --foreground: oklch(0.965 0.004 285);
-  --card: oklch(0.195 0.01 285);
-  --card-foreground: oklch(0.965 0.004 285);
-  --popover: oklch(0.205 0.011 285);
-  --popover-foreground: oklch(0.965 0.004 285);
-  --primary: oklch(0.7 0.19 293);
-  --primary-foreground: oklch(0.16 0.03 293);
-  --secondary: oklch(0.255 0.012 285);
-  --secondary-foreground: oklch(0.94 0.005 285);
-  --muted: oklch(0.245 0.01 285);
-  --muted-foreground: oklch(0.7 0.015 285);
-  --accent: oklch(0.275 0.018 290);
-  --accent-foreground: oklch(0.965 0.004 285);
+  --background: oklch(0.155 0.012 55);
+  --foreground: oklch(0.965 0.004 55);
+  --card: oklch(0.195 0.01 55);
+  --card-foreground: oklch(0.965 0.004 55);
+  --popover: oklch(0.205 0.011 55);
+  --popover-foreground: oklch(0.965 0.004 55);
+  --primary: oklch(0.77 0.15 58);
+  --primary-foreground: oklch(0.19 0.035 50);
+  --secondary: oklch(0.255 0.012 55);
+  --secondary-foreground: oklch(0.94 0.005 55);
+  --muted: oklch(0.245 0.01 55);
+  --muted-foreground: oklch(0.7 0.015 55);
+  --accent: oklch(0.275 0.018 55);
+  --accent-foreground: oklch(0.965 0.004 55);
   --destructive: oklch(0.66 0.2 22);
   --success: oklch(0.74 0.16 152);
   --warning: oklch(0.82 0.15 85);
   --border: oklch(1 0 0 / 9%);
   --input: oklch(1 0 0 / 13%);
-  --ring: oklch(0.7 0.19 293 / 60%);
+  --ring: oklch(0.77 0.15 58 / 60%);
 
-  --chart-1: oklch(0.7 0.19 293);
+  --chart-1: oklch(0.77 0.15 58);
   --chart-2: oklch(0.74 0.16 152);
   --chart-3: oklch(0.82 0.15 85);
   --chart-4: oklch(0.7 0.17 240);
   --chart-5: oklch(0.68 0.2 10);
 
-  --sidebar: oklch(0.175 0.009 285);
-  --sidebar-foreground: oklch(0.965 0.004 285);
-  --sidebar-primary: oklch(0.7 0.19 293);
-  --sidebar-primary-foreground: oklch(0.16 0.03 293);
-  --sidebar-accent: oklch(0.255 0.012 285);
-  --sidebar-accent-foreground: oklch(0.965 0.004 285);
+  --sidebar: oklch(0.175 0.009 55);
+  --sidebar-foreground: oklch(0.965 0.004 55);
+  --sidebar-primary: oklch(0.77 0.15 58);
+  --sidebar-primary-foreground: oklch(0.19 0.035 50);
+  --sidebar-accent: oklch(0.255 0.012 55);
+  --sidebar-accent-foreground: oklch(0.965 0.004 55);
   --sidebar-border: oklch(1 0 0 / 9%);
-  --sidebar-ring: oklch(0.7 0.19 293 / 60%);
+  --sidebar-ring: oklch(0.77 0.15 58 / 60%);
 }
 
 @theme inline {
@@ -113,6 +113,10 @@
   html,
   body {
     @apply bg-background text-foreground antialiased;
+    background-image:
+      radial-gradient(1200px 600px at 15% -10%, oklch(0.77 0.15 58 / 7%), transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, oklch(0.7 0.14 25 / 6%), transparent 60%);
+    background-attachment: fixed;
     font-feature-settings: "cv11", "ss01";
   }
 }
