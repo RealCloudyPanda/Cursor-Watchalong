@@ -54,7 +54,7 @@ export default defineBackground(() => {
         });
         break;
       case "inject-overlay":
-        injectOverlay(message.tabId).catch(() => {});
+        serialize(() => injectOverlay(message.tabId).catch(() => {}));
         break;
       case "drawing-changed":
         patchSession({ drawing: message.drawing });
@@ -176,11 +176,19 @@ async function injectOverlay(tabId: number) {
           js: [OVERLAY_FILE],
           matches: ["<all_urls>"],
           allFrames: true,
+          // Also run in about:blank / blob: frames that players create dynamically.
+          matchOriginAsFallback: true,
           runAt: "document_idle",
           persistAcrossSessions: false,
-        },
+        } as chrome.scripting.RegisteredContentScript,
       ])
       .catch(() => {});
+  }
+  // Re-check: the session may have ended while registering (injection is serialized with stop).
+  const still = await readSession();
+  if (still.tabId !== tabId || (still.status !== "live" && still.status !== "starting")) {
+    await removeOverlay();
+    return;
   }
   await chrome.scripting
     .executeScript({ target: { tabId, allFrames: allSites }, files: [OVERLAY_FILE] })

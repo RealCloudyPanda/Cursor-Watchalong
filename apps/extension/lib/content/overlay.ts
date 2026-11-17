@@ -13,6 +13,7 @@ import {
  * Pointer events pass through unless the host is drawing.
  */
 
+/** Positions are normalized (0..1) so cursors stay put when the viewport resizes. */
 interface CursorState {
   x: number;
   y: number;
@@ -27,6 +28,7 @@ interface Stroke {
   color: string;
   points: { x: number; y: number }[];
   endedAt: number | null;
+  lastActivity: number;
 }
 
 interface Ripple {
@@ -42,6 +44,8 @@ const MAX_STROKES_PER_PERSON = 40;
 const RIPPLE_MS = 600;
 const STROKE_WIDTH = 4;
 const HOST_ID = "__host";
+/** A stroke that stops receiving points without an end (lost message, rogue guest) is ended. */
+const ABANDONED_STROKE_MS = 5_000;
 
 export interface OverlayOptions {
   hostColor: string;
@@ -63,6 +67,9 @@ export class Overlay {
   private drawingPinned = false;
   private altHeld = false;
   private hostStroke: string | null = null;
+  private hostPointer: number | null = null;
+  /** The current mouse gesture began as drawing; swallow its click even if Alt was released. */
+  private gestureWasDrawing = false;
   private hostStrokeSeq = 0;
   private disposers: (() => void)[] = [];
 
@@ -89,13 +96,23 @@ export class Overlay {
     this.listen(window, "blur", () => this.setAlt(false));
     this.listen(window, "keydown", (e) => this.onKey(e as KeyboardEvent, true), true);
     this.listen(window, "keyup", (e) => this.onKey(e as KeyboardEvent, false), true);
-    this.listen(this.canvas, "pointerdown", (e) => this.hostDrawStart(e as PointerEvent));
-    this.listen(this.canvas, "pointermove", (e) => this.hostDrawMove(e as PointerEvent));
-    this.listen(this.canvas, "pointerup", () => this.hostDrawEnd());
-    this.listen(this.canvas, "pointercancel", () => this.hostDrawEnd());
+    // Drawing input is handled in the capture phase on window and swallowed there, so page
+    // handlers (document/window listeners, click handlers) never see a drawing gesture.
+    this.listen(window, "pointerdown", (e) => this.hostDrawStart(e as PointerEvent), true);
+    this.listen(window, "pointermove", (e) => this.hostDrawMove(e as PointerEvent), true);
+    this.listen(window, "pointerup", (e) => this.hostDrawEnd(e), true);
+    this.listen(window, "pointercancel", (e) => this.hostDrawEnd(e), true);
+    for (const type of ["mousedown", "mouseup", "click", "dblclick", "contextmenu", "auxclick"]) {
+      this.listen(window, type, (e) => this.swallow(e), true);
+    }
   }
 
   // ── Public API (driven by the host engine) ───────────────────
+
+  /** The overlay's host element, which input injection must never target. */
+  get element(): HTMLElement {
+    return this.host;
+  }
 
   setRoster(participants: Participant[]) {
     this.roster = new Map(participants.filter((p) => p.role === "guest").map((p) => [p.id, p]));
@@ -110,7 +127,7 @@ export class Overlay {
   }
 
   cursor(id: string, x: number, y: number) {
-    const p = this.toPx(x, y);
+    const p = { x, y };
     const c = this.cursors.get(id);
     const now = performance.now();
     if (!c?.visible) {
@@ -134,11 +151,14 @@ export class Overlay {
     if (!color) return;
     const key = `${owner}:${strokeId}`;
     const mine = [...this.strokes.entries()].filter(([, s]) => s.owner === owner);
+    const now = performance.now();
+    // One unfinished stroke per person: a new start ends the previous one.
+    for (const [, s] of mine) if (s.endedAt === null) s.endedAt = now;
     if (mine.length >= MAX_STROKES_PER_PERSON) {
       const oldest = mine[0];
       if (oldest) this.strokes.delete(oldest[0]);
     }
-    this.strokes.set(key, { owner, color, points: [{ x, y }], endedAt: null });
+    this.strokes.set(key, { owner, color, points: [{ x, y }], endedAt: null, lastActivity: now });
     this.kick();
   }
 
@@ -146,6 +166,7 @@ export class Overlay {
     const s = this.strokes.get(`${owner}:${strokeId}`);
     if (!s || s.endedAt !== null || s.points.length >= MAX_POINTS_PER_STROKE) return;
     s.points.push({ x, y });
+    s.lastActivity = performance.now();
     this.kick();
   }
 
@@ -157,8 +178,7 @@ export class Overlay {
 
   ripple(owner: string, x: number, y: number) {
     const color = this.roster.get(owner)?.color ?? this.options.hostColor;
-    const p = this.toPx(x, y);
-    this.ripples.push({ x: p.x, y: p.y, color, at: performance.now() });
+    this.ripples.push({ x, y, color, at: performance.now() });
     this.kick();
   }
 
@@ -168,6 +188,19 @@ export class Overlay {
       if (s.owner === id && s.endedAt === null) s.endedAt = performance.now();
     }
     this.kick();
+  }
+
+  /** Alt held/released while keyboard focus is inside an iframe (relayed by the engine). */
+  setAltHeld(held: boolean) {
+    this.setAlt(held);
+  }
+
+  /** Escape pressed inside an iframe. */
+  cancelPinnedDrawing() {
+    if (!this.drawingPinned) return;
+    this.drawingPinned = false;
+    this.updatePointerMode();
+    this.options.onDrawingChanged(false);
   }
 
   /** Draw mode toggled from the side panel. */
@@ -218,24 +251,50 @@ export class Overlay {
     this.cursor(HOST_ID, n.x, n.y);
   }
 
+  private isOverlayEvent(e: Event) {
+    return e.composedPath().includes(this.host);
+  }
+
+  private swallow(e: Event) {
+    if ((this.drawing || this.gestureWasDrawing) && this.isOverlayEvent(e)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+    if (e.type === "click" || e.type === "contextmenu") this.gestureWasDrawing = false;
+  }
+
   private hostDrawStart(e: PointerEvent) {
-    if (!this.drawing || e.button !== 0) return;
+    if (!this.drawing || !this.isOverlayEvent(e)) return;
     e.preventDefault();
-    this.canvas.setPointerCapture(e.pointerId);
+    e.stopImmediatePropagation();
+    if (e.button !== 0 || this.hostPointer !== null) return;
+    this.gestureWasDrawing = true;
+    this.hostPointer = e.pointerId;
+    try {
+      this.canvas.setPointerCapture(e.pointerId);
+    } catch {
+      // pointer already gone
+    }
     this.hostStroke = `h${++this.hostStrokeSeq}`;
     const n = this.toNorm(e.clientX, e.clientY);
     this.strokeStart(HOST_ID, this.hostStroke, n.x, n.y);
   }
 
   private hostDrawMove(e: PointerEvent) {
-    if (!this.hostStroke) return;
+    if (!this.hostStroke || e.pointerId !== this.hostPointer) return;
+    e.stopImmediatePropagation();
     for (const ev of e.getCoalescedEvents?.() ?? [e]) {
       const n = this.toNorm(ev.clientX, ev.clientY);
       this.strokePoint(HOST_ID, this.hostStroke, n.x, n.y);
     }
   }
 
-  private hostDrawEnd() {
+  private hostDrawEnd(e?: Event) {
+    if (e instanceof PointerEvent) {
+      if (e.pointerId !== this.hostPointer) return;
+      e.stopImmediatePropagation();
+    }
+    this.hostPointer = null;
     if (!this.hostStroke) return;
     this.strokeEnd(HOST_ID, this.hostStroke);
     this.hostStroke = null;
@@ -268,6 +327,7 @@ export class Overlay {
     const h = window.innerHeight;
     for (const [key, s] of this.strokes) {
       let alpha = 1;
+      if (s.endedAt === null && now - s.lastActivity > ABANDONED_STROKE_MS) s.endedAt = now;
       if (s.endedAt !== null) {
         const t = now - s.endedAt - STROKE_FADE_DELAY_MS;
         if (t >= STROKE_FADE_DURATION_MS) {
@@ -317,7 +377,7 @@ export class Overlay {
       ctx.strokeStyle = r.color;
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(r.x, r.y, 6 + t * 22, 0, Math.PI * 2);
+      ctx.arc(r.x * window.innerWidth, r.y * window.innerHeight, 6 + t * 22, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
@@ -336,14 +396,14 @@ export class Overlay {
       // Ease toward the latest reported position for smooth motion between updates.
       c.x += (c.tx - c.x) * 0.45;
       c.y += (c.ty - c.y) * 0.45;
-      if (Math.abs(c.tx - c.x) > 0.3 || Math.abs(c.ty - c.y) > 0.3) moving = true;
+      if (Math.abs(c.tx - c.x) > 0.0002 || Math.abs(c.ty - c.y) > 0.0002) moving = true;
       const fade = idle > CURSOR_IDLE_HIDE_MS - 1_000 ? (CURSOR_IDLE_HIDE_MS - idle) / 1_000 : 1;
       const isHost = id === HOST_ID;
       const p = this.roster.get(id);
       const color = isHost ? this.options.hostColor : p?.color;
       const name = isHost ? this.options.hostName : p?.name;
       if (!color || !name) continue;
-      this.drawCursor(c.x, c.y, color, name, fade);
+      this.drawCursor(c.x * window.innerWidth, c.y * window.innerHeight, color, name, fade);
       moving = true; // keep ticking so idle cursors fade out on time
     }
     return moving;
@@ -397,10 +457,6 @@ export class Overlay {
     this.canvas.width = Math.round(window.innerWidth * this.dpr);
     this.canvas.height = Math.round(window.innerHeight * this.dpr);
     this.kick();
-  }
-
-  private toPx(x: number, y: number) {
-    return { x: x * window.innerWidth, y: y * window.innerHeight };
   }
 
   private toNorm(px: number, py: number) {

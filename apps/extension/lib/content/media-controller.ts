@@ -15,6 +15,8 @@ const EVENTS = [
   "ratechange",
   "emptied",
   "loadedmetadata",
+  "waiting",
+  "stalled",
 ] as const;
 
 /**
@@ -27,6 +29,23 @@ export class MediaController {
   private rescanTimer: ReturnType<typeof setInterval>;
   private lastTimeReport = 0;
   private lastKey = "";
+  /**
+   * Visible area of each video in the *top-level* viewport. IntersectionObserver's implicit
+   * root accounts for clipping by every ancestor iframe, so an embedded player scrolled out of
+   * view scores 0 even though it fills its own frame.
+   */
+  private visible = new WeakMap<HTMLVideoElement, number>();
+  private observed = new WeakSet<HTMLVideoElement>();
+  private io = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        const r = e.intersectionRect;
+        this.visible.set(e.target as HTMLVideoElement, e.isIntersecting ? r.width * r.height : 0);
+      }
+      this.rescan();
+    },
+    { threshold: [0, 0.1, 0.25, 0.5, 0.75, 1] },
+  );
 
   constructor(private report: (state: MediaState, score: number) => void) {
     this.rescan();
@@ -67,6 +86,7 @@ export class MediaController {
 
   dispose() {
     clearInterval(this.rescanTimer);
+    this.io.disconnect();
     this.attach(null);
   }
 
@@ -78,15 +98,16 @@ export class MediaController {
 
   private findVideo(): HTMLVideoElement | null {
     const videos = [...document.querySelectorAll("video")];
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
+    for (const v of videos) {
+      if (!this.observed.has(v)) {
+        this.observed.add(v);
+        this.io.observe(v);
+      }
+    }
     const index = pickMainVideo(
       videos.map((v) => {
-        const r = v.getBoundingClientRect();
-        const w = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0));
-        const h = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
         return {
-          visibleArea: w * h,
+          visibleArea: this.visible.get(v) ?? 0,
           playing: !v.paused && !v.ended,
           hasSource: v.readyState > 0 || !!v.currentSrc || !!v.srcObject,
         };
@@ -129,7 +150,7 @@ export class MediaController {
           duration: 0,
           playbackRate: 1,
         };
-    const score = v ? visibleArea(v) : 0;
+    const score = v ? (this.visible.get(v) ?? 0) : 0;
     // Skip identical reports from the periodic rescan; forced reports always go out.
     const key = `${state.hasVideo}|${state.paused}|${state.muted}|${state.duration}|${Math.round(score / 1000)}`;
     if (!force && key === this.lastKey) return;
@@ -137,13 +158,6 @@ export class MediaController {
     this.lastTimeReport = Date.now();
     this.report(state, score);
   }
-}
-
-function visibleArea(v: HTMLVideoElement) {
-  const r = v.getBoundingClientRect();
-  const w = Math.max(0, Math.min(r.right, window.innerWidth) - Math.max(r.left, 0));
-  const h = Math.max(0, Math.min(r.bottom, window.innerHeight) - Math.max(r.top, 0));
-  return w * h;
 }
 
 const finite = (n: number) => (Number.isFinite(n) && n > 0 ? n : 0);

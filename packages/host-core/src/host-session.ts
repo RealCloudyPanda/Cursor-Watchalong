@@ -75,11 +75,14 @@ interface GuestRecord extends HostGuest {
   cursorBucket: TokenBucket;
   strokeBucket: TokenBucket;
   commandBucket: TokenBucket;
+  /** Strokes this guest started that haven't ended; their stroke-end is never rate-limited. */
+  activeStrokes: Set<string>;
   /** Rejections are rate-limited too, so a spammer can't make us flood the channel. */
   rejectBucket: TokenBucket;
 }
 
 const MAX_ACTIVITY = 30;
+const MAX_ACTIVE_STROKES = 4;
 const RECONNECT_DELAYS = [500, 1_000, 2_000, 4_000, 8_000];
 
 /**
@@ -370,6 +373,7 @@ export class HostSession {
       strokeBucket: new TokenBucket(CURSOR_RATE_PER_SEC * 2, CURSOR_RATE_PER_SEC * 2),
       commandBucket: new TokenBucket(COMMAND_RATE_PER_SEC, COMMAND_RATE_PER_SEC),
       rejectBucket: new TokenBucket(2, 4),
+      activeStrokes: new Set(),
     };
     this.guests.set(guestId, record);
     this.publishRoster();
@@ -420,6 +424,14 @@ export class HostSession {
     const guest = this.guests.get(guestId);
     if (!guest) return;
 
+    // A stroke's end must always get through, or the mark would never fade on the host.
+    if (message.type === "stroke-end") {
+      if (!guest.activeStrokes.delete(message.strokeId)) return;
+      this.options.onGuestMessage(this.toParticipant(guest), message);
+      return;
+    }
+    if (message.type === "stroke-point" && !guest.activeStrokes.has(message.strokeId)) return;
+
     const isPointing =
       message.type === "cursor" ||
       message.type === "cursor-leave" ||
@@ -441,6 +453,11 @@ export class HostSession {
         guest.peer.send({ type: "command-rejected", reason: "no-control" });
       }
       return;
+    }
+
+    if (message.type === "stroke-start") {
+      if (guest.activeStrokes.size >= MAX_ACTIVE_STROKES) return;
+      guest.activeStrokes.add(message.strokeId);
     }
 
     // Describe against the state *before* the tab applies the command.

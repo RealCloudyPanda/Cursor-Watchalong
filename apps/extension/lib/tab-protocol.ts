@@ -19,9 +19,14 @@ export type ToTab =
   | { type: "guest"; from: Participant; message: GuestMessage }
   | { type: "guest-gone"; id: string }
   | { type: "set-drawing"; drawing: boolean }
+  | { type: "draw-key"; key: DrawKey }
   | { type: "end" };
 
 export type FromTab =
   | { type: "media-report"; state: MediaState; score: number }
   | { type: "viewport"; width: number; height: number }
-  | { type: "drawing-changed"; drawing: boolean };
+  | { type: "drawing-changed"; drawing: boolean }
+  /** Alt/Escape pressed while focus is inside a child frame, relayed to the top overlay. */
+  | { type: "draw-key"; key: DrawKey };
+
+export type DrawKey = "alt-down" | "alt-up" | "escape";

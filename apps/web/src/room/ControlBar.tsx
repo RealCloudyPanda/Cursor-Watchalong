@@ -6,7 +6,7 @@ import { Slider } from "@watchalong/ui/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@watchalong/ui/components/ui/tooltip";
 import { cn } from "@watchalong/ui/lib/utils";
 import { Keyboard, Pause, Play, RotateCcw, RotateCw, Volume2, VolumeX } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useMediaClock } from "../hooks/useMediaClock";
 
 type Media = Extract<GuestMessage, { type: "media" }>;
@@ -22,12 +22,20 @@ interface ControlBarProps {
 
 export function ControlBar({ media, mediaAt, canControl, onCommand, tools }: ControlBarProps) {
   const time = useMediaClock(media, mediaAt);
+  // Preview position only while the thumb is dragged with a pointer; keyboard seeks commit directly.
   const [scrub, setScrub] = useState<number | null>(null);
+  const dragging = useRef(false);
   const hasVideo = !!media?.hasVideo;
   const disabled = !canControl || !hasVideo;
   const duration = media?.duration ?? 0;
   const seekable = duration > 0;
   const shown = scrub ?? time;
+  useEffect(() => {
+    if (disabled) {
+      dragging.current = false;
+      setScrub(null);
+    }
+  }, [disabled]);
   const reason = !hasVideo
     ? "No video found in the shared tab"
     : "The host hasn't given you control";
@@ -92,8 +100,16 @@ export function ControlBar({ media, mediaAt, canControl, onCommand, tools }: Con
           max={seekable ? duration : 1}
           step={0.1}
           value={[seekable ? Math.min(shown, duration) : 0]}
-          onValueChange={([v]) => setScrub(v ?? null)}
+          thumbLabel="Seek"
+          thumbValueText={`${formatTime(shown)} of ${formatTime(duration)}`}
+          onPointerDown={() => {
+            dragging.current = true;
+          }}
+          onValueChange={([v]) => {
+            if (dragging.current) setScrub(v ?? null);
+          }}
           onValueCommit={([v]) => {
+            dragging.current = false;
             setScrub(null);
             if (v !== undefined) onCommand({ type: "media", action: "seek", value: v });
           }}

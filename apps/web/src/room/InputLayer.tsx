@@ -23,6 +23,9 @@ interface LocalStroke {
 
 const STROKE_WIDTH = 4;
 const MAX_POINTS = 2_000;
+/** Match the host's per-guest limits regardless of display refresh rate. */
+const CURSOR_INTERVAL_MS = 1000 / 60;
+const STROKE_POINT_INTERVAL_MS = 1000 / 110;
 
 /**
  * Transparent layer exactly over the host's tab inside the video. It turns the guest's pointer
@@ -43,7 +46,11 @@ export function InputLayer({
   const layerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const strokes = useRef<LocalStroke[]>([]);
-  const active = useRef<{ id: string; stroke: LocalStroke } | null>(null);
+  const active = useRef<{ id: string; stroke: LocalStroke; pointerId: number } | null>(null);
+  /** The current mouse gesture began as drawing: swallow its click even if Alt is released. */
+  const gestureDrew = useRef(false);
+  const lastCursorAt = useRef(0);
+  const lastPointAt = useRef(0);
   const strokeSeq = useRef(0);
   const pendingCursor = useRef<{ x: number; y: number } | null>(null);
   const pendingPoints = useRef<{ x: number; y: number }[]>([]);
@@ -125,19 +132,41 @@ export function InputLayer({
 
   const flush = useCallback(() => {
     flushRaf.current = 0;
+    const now = performance.now();
+    let deferred = false;
     const a = active.current;
     if (a && pendingPoints.current.length > 0) {
-      // Thin the batch to at most 2 points per frame to stay well under the host's rate limit.
-      const pts = pendingPoints.current;
-      const picks = pts.length <= 2 ? pts : [pts[Math.floor(pts.length / 2)], pts[pts.length - 1]];
-      for (const p of picks) {
-        if (p) send({ type: "stroke-point", strokeId: a.id, x: p.x, y: p.y });
+      // Time-based budget (~110 points/s): thin the batch to what the budget allows.
+      const budget = Math.min(
+        2,
+        Math.floor((now - lastPointAt.current) / STROKE_POINT_INTERVAL_MS),
+      );
+      if (budget <= 0) {
+        deferred = true;
+      } else {
+        const pts = pendingPoints.current;
+        const picks =
+          pts.length <= budget
+            ? pts
+            : budget === 1
+              ? [pts[pts.length - 1]]
+              : [pts[Math.floor(pts.length / 2)], pts[pts.length - 1]];
+        for (const p of picks) {
+          if (p) send({ type: "stroke-point", strokeId: a.id, x: p.x, y: p.y });
+        }
+        lastPointAt.current = now;
+        pendingPoints.current = [];
       }
+      pendingCursor.current = null;
     } else if (pendingCursor.current) {
-      send({ type: "cursor", ...pendingCursor.current });
+      if (now - lastCursorAt.current >= CURSOR_INTERVAL_MS) {
+        send({ type: "cursor", ...pendingCursor.current });
+        lastCursorAt.current = now;
+        pendingCursor.current = null;
+      } else {
+        deferred = true;
+      }
     }
-    pendingPoints.current = [];
-    pendingCursor.current = null;
 
     const wh = wheel.current;
     if (wh.dx !== 0 || wh.dy !== 0) {
@@ -151,7 +180,10 @@ export function InputLayer({
       });
       wheel.current = { dx: 0, dy: 0, x: wh.x, y: wh.y };
     }
+    if (deferred) flushRaf.current = requestAnimationFrame(() => flushRef.current());
   }, [send, viewport, rect.height]);
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
 
   const schedule = useCallback(() => {
     if (!flushRaf.current) flushRaf.current = requestAnimationFrame(flush);
@@ -159,29 +191,34 @@ export function InputLayer({
 
   // ── Pointer handlers ─────────────────────────────────────────
 
-  const endStroke = useCallback(() => {
-    const a = active.current;
-    if (!a) return;
-    flush();
-    a.stroke.endedAt = performance.now();
-    active.current = null;
-    send({ type: "stroke-end", strokeId: a.id });
-    repaint();
-  }, [flush, repaint, send]);
+  const endStroke = useCallback(
+    (e?: { pointerId: number }) => {
+      const a = active.current;
+      if (!a || (e && e.pointerId !== a.pointerId)) return;
+      flush();
+      a.stroke.endedAt = performance.now();
+      active.current = null;
+      send({ type: "stroke-end", strokeId: a.id });
+      repaint();
+    },
+    [flush, repaint, send],
+  );
 
   useEffect(() => {
     if (!drawing) endStroke();
   }, [drawing, endStroke]);
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (!drawing || e.button !== 0) return;
+    gestureDrew.current = drawing;
+    // One stroke at a time: ignore extra fingers/pens while a stroke is in progress.
+    if (!drawing || e.button !== 0 || active.current) return;
     const p = norm(e.clientX, e.clientY);
     if (!p) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     const id = `s${Date.now().toString(36)}${(++strokeSeq.current).toString(36)}`.slice(0, 32);
     const stroke: LocalStroke = { points: [p], endedAt: null };
     strokes.current.push(stroke);
-    active.current = { id, stroke };
+    active.current = { id, stroke, pointerId: e.pointerId };
     send({ type: "stroke-start", strokeId: id, x: p.x, y: p.y });
     repaint();
   };
@@ -189,6 +226,7 @@ export function InputLayer({
   const onPointerMove = (e: React.PointerEvent) => {
     const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent];
     const a = active.current;
+    if (a && e.pointerId !== a.pointerId) return;
     for (const ev of events) {
       const p = norm(ev.clientX, ev.clientY);
       if (!p) continue;
@@ -204,7 +242,9 @@ export function InputLayer({
   };
 
   const onClick = (e: React.MouseEvent) => {
-    if (drawing) return;
+    const drew = gestureDrew.current;
+    gestureDrew.current = false;
+    if (drawing || drew) return;
     const p = norm(e.clientX, e.clientY);
     if (!p) return;
     if (!canControl) {
@@ -261,9 +301,9 @@ export function InputLayer({
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      onPointerUp={endStroke}
-      onPointerCancel={endStroke}
-      onLostPointerCapture={endStroke}
+      onPointerUp={(e) => endStroke(e)}
+      onPointerCancel={(e) => endStroke(e)}
+      onLostPointerCapture={(e) => endStroke(e)}
       onPointerLeave={() => {
         if (!active.current) send({ type: "cursor-leave" });
       }}

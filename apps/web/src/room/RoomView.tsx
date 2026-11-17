@@ -62,6 +62,7 @@ export function RoomView({ session, state }: { session: GuestSession; state: Gue
         setPinned(false);
       } else if (
         (e.key === "d" || e.key === "D") &&
+        !e.repeat &&
         !e.metaKey &&
         !e.ctrlKey &&
         !e.altKey &&

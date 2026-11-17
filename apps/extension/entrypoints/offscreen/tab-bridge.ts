@@ -126,6 +126,11 @@ export class TabBridge {
           this.options.onViewport({ width: message.width, height: message.height });
         }
         break;
+      case "draw-key":
+        if (frameId !== 0 && ["alt-down", "alt-up", "escape"].includes(message.key)) {
+          this.post(0, { type: "draw-key", key: message.key });
+        }
+        break;
       case "drawing-changed":
         if (frameId === 0 && typeof message.drawing === "boolean") {
           this.drawing = message.drawing;
