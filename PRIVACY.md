@@ -25,7 +25,10 @@ web servers.
 
 ## Data stored on your device
 
-- The extension stores your host display name in Chrome's local extension storage.
+- The extension stores your host display name in Chrome's local extension storage. While you
+  are sharing, it keeps the live session's details (invite link, guest names, recent activity)
+  in Chrome's in-memory session storage so the side panel can show them; they are cleared when
+  the session ends and never written to disk.
 - The guest page stores your display name in your browser's local storage, and a short-lived
   rejoin token in session storage so a brief disconnect doesn't require re-approval.
 

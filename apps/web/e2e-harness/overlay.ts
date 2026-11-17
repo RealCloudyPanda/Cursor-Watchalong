@@ -19,11 +19,11 @@ overlay.setRoster([
   { id: "host0001", name: "Hosty", color: "#ff4d6d", role: "host", canControl: true },
   { id: "guest001", name: "Sam", color: "#4dabf7", role: "guest", canControl: true },
 ]);
-const forwarded: { challenge: string; input: unknown }[] = [];
+const forwarded: { frameId: number; input: unknown }[] = [];
 const injector = new InputInjector({
   ignore: () => document.querySelector("watchalong-overlay"),
-  forwardToFrame: (challenge, input) => forwarded.push({ challenge, input }),
-  ackProbe: () => {},
+  forwardToFrame: (frameId, input) => forwarded.push({ frameId, input }),
+  frameIdOf: () => 7,
 });
 
 /** Count opaque pixels in the overlay canvas (closed shadow root, so read via drawImage). */

@@ -3,3 +3,9 @@
 **/.output
 **/.wxt
 .git
+**/.env
+**/.env.*
+!**/.env.example
+**/.output
+**/playwright-report
+**/test-results

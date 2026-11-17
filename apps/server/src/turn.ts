@@ -44,8 +44,10 @@ export class IceProvider {
   async start(): Promise<void> {
     if (!this.turnConfigured) return;
     await this.refresh();
+    // Refresh hourly, so any credential handed to a new participant is valid for at least
+    // ttl − 1h (≈23h). Already-connected peers keep the credentials they joined with.
     this.timer = setInterval(() => {
-      if (this.expiresAt - this.now() < (this.ttl * 1000) / 4) void this.refresh();
+      if (this.expiresAt - this.now() < this.ttl * 1000 - 60 * 60_000) void this.refresh();
     }, 5 * 60_000);
     this.timer.unref?.();
   }

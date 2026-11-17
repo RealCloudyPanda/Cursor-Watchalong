@@ -5,47 +5,31 @@
  * `debugger` permission.
  *
  * When the point lands on an <iframe>, the input is handed to that frame's content script
- * through the extension (never through page-visible messages), so pages can't forge it.
+ * through the extension, addressed by frame id, so pages can neither see nor redirect it.
  */
-
-export const PROBE_KEY = "__watchalongProbe";
 
 export type InjectedInput =
   | { kind: "click" | "dblclick"; x: number; y: number }
   | { kind: "wheel"; x: number; y: number; dx: number; dy: number };
 
 /**
- * Input for an iframe never travels through page-visible postMessage. Instead the parent
- * registers the input with the extension under a one-time challenge and posts only the
- * challenge to the child frame; the child's content script echoes the challenge over its own
- * extension port, and the engine delivers the input to exactly that frame.
+ * Input for an iframe never travels through page-visible messages. The parent's content script
+ * resolves the iframe element to its extension frame id (chrome.runtime.getFrameId) and the
+ * engine delivers the input to exactly that frame over its extension port.
  */
 export interface InputInjectorOptions {
   /** Our own overlay element, which must never be the click target. */
   ignore: () => Element | null;
-  /** Register input for the iframe that will acknowledge `challenge`. */
-  forwardToFrame: (challenge: string, input: InjectedInput) => void;
-  /** This frame received a probe from its parent: tell the engine. */
-  ackProbe: (challenge: string) => void;
+  /** Deliver input to the child frame with this extension frame id. */
+  forwardToFrame: (frameId: number, input: InjectedInput) => void;
+  /** Resolve an iframe element to its frame id (chrome.runtime.getFrameId). */
+  frameIdOf: (frame: HTMLIFrameElement | HTMLFrameElement) => number;
 }
 
 export class InputInjector {
-  private onMessage = (event: MessageEvent) => {
-    if (event.source !== window.parent || window.parent === window) return;
-    const data = event.data as Record<string, unknown> | null;
-    const challenge = data?.[PROBE_KEY];
-    if (typeof challenge === "string" && /^[0-9a-f-]{36}$/.test(challenge)) {
-      this.options.ackProbe(challenge);
-    }
-  };
+  constructor(private options: InputInjectorOptions) {}
 
-  constructor(private options: InputInjectorOptions) {
-    window.addEventListener("message", this.onMessage);
-  }
-
-  dispose() {
-    window.removeEventListener("message", this.onMessage);
-  }
+  dispose() {}
 
   inject(input: InjectedInput) {
     const cx = input.x * window.innerWidth;
@@ -91,9 +75,14 @@ export class InputInjector {
     const w = frame.clientWidth;
     const h = frame.clientHeight;
     if (w <= 0 || h <= 0) return;
-    const challenge = crypto.randomUUID();
-    this.options.forwardToFrame(challenge, { ...input, x: clamp01(lx / w), y: clamp01(ly / h) });
-    frame.contentWindow.postMessage({ [PROBE_KEY]: challenge }, "*");
+    let frameId: number;
+    try {
+      frameId = this.options.frameIdOf(frame);
+    } catch {
+      return;
+    }
+    if (frameId < 0) return;
+    this.options.forwardToFrame(frameId, { ...input, x: clamp01(lx / w), y: clamp01(ly / h) });
   }
 
   private click(target: Element, cx: number, cy: number, double: boolean) {

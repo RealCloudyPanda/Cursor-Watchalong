@@ -38,7 +38,7 @@ in memory and dies with the room.
 | Comms | No voice or text chat in v1 (assume Discord/a call). |
 | DRM | **Warn** on known DRM domains (Netflix, Disney+, Max, Prime Video, Hulu, Apple TV+) in the side panel; sharing still allowed. Netflix sync-mode is a future project. |
 | Permissions | Required: `tabCapture`, `offscreen`, `scripting`, `storage`, `sidePanel`, `activeTab`. **Optional host permission `<all_urls>`**, requested on first Start Sharing so the content script survives cross-origin navigation and runs in iframes. Minimum Chrome 119. |
-| Iframe input | Never via page-visible messages carrying authority: the parent registers the input with the engine under a one-time challenge, posts only the challenge, and the child's content script claims it over its extension port. |
+| Iframe input | Never via page-visible messages: the parent's content script resolves the iframe to its extension frame id (`chrome.runtime.getFrameId`) and the engine delivers the input to exactly that frame over its port. |
 | UI | shadcn/ui + Tailwind v4 in a shared `packages/ui`, dark theme with a violet accent. |
 
 ## 3. Tech stack

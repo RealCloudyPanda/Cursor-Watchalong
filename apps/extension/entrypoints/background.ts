@@ -45,12 +45,13 @@ export default defineBackground(() => {
           const current = await readSession();
           // Ignore late updates from a session that was already stopped.
           if (current.status !== "live" && current.status !== "starting") return;
-          const s = await patchSession({
-            host: message.host,
-            status: message.host.status === "ended" ? "ended" : "live",
-            error: message.host.error,
-          });
-          if (s.status === "ended") await closeOffscreen();
+          if (message.host.status === "ended") {
+            // Keep nothing about a finished session (guests, invite link, activity).
+            await replaceSession({ status: "ended", error: message.host.error });
+            await closeOffscreen();
+            return;
+          }
+          await patchSession({ host: message.host, status: "live", error: message.host.error });
         });
         break;
       case "inject-overlay":
@@ -127,7 +128,7 @@ async function stopSharing() {
     await closeOffscreen();
     return;
   }
-  await patchSession({ status: "ended" });
+  await replaceSession({ status: "ended" });
   await sendExt({ target: "offscreen", type: "end" });
   // Give the offscreen document a moment to tell the server before it's closed.
   await new Promise((r) => setTimeout(r, 300));

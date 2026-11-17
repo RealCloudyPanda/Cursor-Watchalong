@@ -42,8 +42,6 @@ export class TabBridge {
   private drawing = false;
   private rosterKey = "";
   private roster: Participant[] = [];
-  /** challenge → input registered by a parent frame, waiting for the child's acknowledgement. */
-  private pendingInputs = new Map<string, { input: InjectedInput; from: number; at: number }>();
 
   constructor(
     readonly tabId: number,
@@ -141,27 +139,18 @@ export class TabBridge {
           this.options.onViewport({ width: message.width, height: message.height });
         }
         break;
-      case "frame-input": {
-        if (typeof message.challenge !== "string" || !validInput(message.input)) return;
-        const now = Date.now();
-        for (const [k, v] of this.pendingInputs)
-          if (now - v.at > 2_000) this.pendingInputs.delete(k);
-        if (this.pendingInputs.size < 32) {
-          this.pendingInputs.set(message.challenge, {
-            input: message.input,
-            from: frameId,
-            at: now,
-          });
+      case "frame-input":
+        // Our own content script resolved the iframe element to this frame id; deliver only to
+        // a different, connected frame of the shared tab.
+        if (
+          Number.isInteger(message.frameId) &&
+          message.frameId !== frameId &&
+          this.frames.has(message.frameId) &&
+          validInput(message.input)
+        ) {
+          this.post(message.frameId, { type: "inject", input: message.input });
         }
         break;
-      }
-      case "probe-ack": {
-        const pending = this.pendingInputs.get(message.challenge);
-        if (!pending || pending.from === frameId) return;
-        this.pendingInputs.delete(message.challenge);
-        this.post(frameId, { type: "inject", input: pending.input });
-        break;
-      }
       case "draw-key":
         if (frameId !== 0 && ["alt-down", "alt-up", "escape"].includes(message.key)) {
           this.post(0, { type: "draw-key", key: message.key });

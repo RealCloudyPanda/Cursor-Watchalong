@@ -201,7 +201,8 @@ The server also serves the built guest app, so one container runs everything.
 
 ```bash
 fly launch --no-deploy   # first time only
-fly deploy
+fly deploy --ha=false    # one machine: rooms live in memory
+fly scale count 1        # keep it at one if it was ever scaled up
 ```
 
 Run a **single instance**: rooms live in memory, so a restart or redeploy ends every active session.

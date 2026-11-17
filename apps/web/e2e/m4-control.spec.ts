@@ -112,9 +112,9 @@ test("clicks on an iframe are handed to the extension, not posted to the page", 
   expect(forwarded[0].input.kind).toBe("click");
   expect(forwarded[0].input.x).toBeCloseTo(0.75, 2);
   expect(forwarded[0].input.y).toBeCloseTo(1 / 3, 2);
-  // The page inside the iframe only ever sees a one-time challenge, never the input itself.
-  const seen = await page.evaluate(() => (window as any).__seen);
-  expect(seen).toEqual([{ __watchalongProbe: forwarded[0].challenge }]);
+  expect(forwarded[0].frameId).toBe(7);
+  // Nothing about the input is posted into the page.
+  expect(await page.evaluate(() => (window as any).__seen)).toEqual([]);
 });
 
 test("scrolling chains to the page once a nested scroller hits its end", async ({ page }) => {
