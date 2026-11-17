@@ -17,8 +17,9 @@ const PORT = Number(process.env.PORT ?? 8787);
 const WEB_DIST = resolve(fileURLToPath(new URL("../../web/dist", import.meta.url)));
 
 const ice = new IceProvider({
-  keyId: process.env.CF_TURN_KEY_ID,
-  apiToken: process.env.CF_TURN_API_TOKEN,
+  // Trim: values pasted into dashboards often carry a stray space or newline.
+  keyId: process.env.CF_TURN_KEY_ID?.trim(),
+  apiToken: process.env.CF_TURN_API_TOKEN?.trim(),
 });
 const registry = new RoomRegistry({
   iceServers: () => ice.current(),

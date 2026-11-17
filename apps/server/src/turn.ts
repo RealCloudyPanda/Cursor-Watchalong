@@ -91,7 +91,15 @@ export class IceProvider {
           signal: AbortSignal.timeout(10_000),
         },
       );
-      if (!res.ok) throw new Error(`Cloudflare TURN responded ${res.status}`);
+      if (!res.ok) {
+        const hint =
+          res.status === 404
+            ? " (TURN key ID not found: check CF_TURN_KEY_ID is the Turn Token ID)"
+            : res.status === 401 || res.status === 403
+              ? " (API token rejected: check CF_TURN_API_TOKEN)"
+              : "";
+        throw new Error(`Cloudflare TURN responded ${res.status}${hint}`);
+      }
       const parsed = parseIceServers(await res.json());
       if (parsed.length === 0) throw new Error("Cloudflare TURN returned no ICE servers");
       this.servers = parsed;
