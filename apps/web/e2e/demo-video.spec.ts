@@ -11,6 +11,12 @@ test.setTimeout(120_000);
 
 const size = { width: 1280, height: 720 };
 
+async function boxOf(locator: import("@playwright/test").Locator) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("element not visible");
+  return box;
+}
+
 // Playwright videos don't show the mouse pointer, so draw one.
 const cursorScript = () => {
   window.addEventListener("DOMContentLoaded", () => {
@@ -42,7 +48,7 @@ test("demo", async ({ browser }) => {
   // 1. Homepage + live demo doodle
   await page.goto("/");
   await page.waitForTimeout(1200);
-  const demo = (await page.getByLabel(/Interactive demo/).boundingBox())!;
+  const demo = await boxOf(page.getByLabel(/Interactive demo/));
   await glide(demo.x + demo.width * 0.45, demo.y + demo.height * 0.35);
   await page.mouse.down();
   for (let i = 0; i <= 30; i++) {
@@ -75,7 +81,7 @@ test("demo", async ({ browser }) => {
   await page.waitForTimeout(1200);
 
   // 3. Point, then draw on the shared tab
-  const box = (await page.getByTestId("input-layer").boundingBox())!;
+  const box = await boxOf(page.getByTestId("input-layer"));
   await glide(box.x + box.width * 0.3, box.y + box.height * 0.4);
   await glide(box.x + box.width * 0.55, box.y + box.height * 0.5);
   await page.keyboard.press("d");
@@ -97,7 +103,7 @@ test("demo", async ({ browser }) => {
   await expect(page.getByText("You can control")).toBeVisible();
   await page.waitForTimeout(600);
   const pause = page.getByRole("button", { name: "Pause" });
-  const pb = (await pause.boundingBox())!;
+  const pb = await boxOf(pause);
   await glide(pb.x + pb.width / 2, pb.y + pb.height / 2);
   await pause.click();
   await page.waitForTimeout(900);
