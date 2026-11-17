@@ -17,6 +17,7 @@ Screen sharing where guests interact with the page instead of only watching it.<
 </p>
 
 <p>
+  <a href="#demo">Demo</a> ·
   <a href="#features">Features</a> ·
   <a href="#screenshots">Screenshots</a> ·
   <a href="#how-it-works">How it works</a> ·
@@ -29,6 +30,15 @@ Screen sharing where guests interact with the page instead of only watching it.<
 </div>
 
 ---
+
+## Demo
+
+<p align="center">
+  <a href="docs/demo/cursor-watchalong-demo.mp4">
+    <img src="docs/demo/cursor-watchalong-demo.gif" alt="Demo: a guest joins from an invite link, draws a circle on the host's live tab, gets control and pauses the video" width="100%" />
+  </a>
+  <br /><sub>24-second demo: join from a link, draw on the shared tab, take control. <a href="docs/demo/cursor-watchalong-demo.mp4">Watch the MP4</a>.</sub>
+</p>
 
 ## Overview
 
@@ -263,6 +273,7 @@ Or build it and load `apps/extension/.output/chrome-mv3` with **Load unpacked** 
 | `pnpm --filter @watchalong/extension zip` | Package the extension for the Chrome Web Store |
 | `node scripts/render-icons.mjs` | Regenerate extension icons from `apps/extension/assets/icon.svg` |
 | `SCREENSHOTS=1 pnpm --filter @watchalong/web e2e readme-screenshots` | Regenerate these README screenshots |
+| `DEMO_VIDEO=1 pnpm --filter @watchalong/web e2e demo-video` | Re-record the demo video (then convert with ffmpeg) |
 
 ## Testing
 
