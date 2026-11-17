@@ -32,6 +32,7 @@ export type ExtMessage =
       streamId: string;
       tabId: number;
       hostName: string;
+      hostPin?: string;
     }
   // side panel → offscreen
   | { target: "offscreen"; type: "admit" | "deny" | "kick"; guestId: string }
@@ -47,6 +48,7 @@ export type ExtMessage =
 
 export const SESSION_KEY = "session";
 export const HOST_NAME_KEY = "hostName";
+export const HOST_PIN_KEY = "hostPin";
 export const PORT_NAME = "watchalong-frame";
 
 export function sendExt(message: ExtMessage): Promise<unknown> {

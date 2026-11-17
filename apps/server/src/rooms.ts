@@ -58,6 +58,8 @@ export interface RegistryOptions {
   iceServers: () => IceServer[];
   /** Hard cap on concurrent rooms, as a memory safety net. */
   maxRooms?: number;
+  /** When set, creating a room requires this PIN (guests are unaffected). */
+  hostPin?: string;
 }
 
 const safeEqual = (a: string, b: string) => {
@@ -86,7 +88,7 @@ export class RoomRegistry {
         conn.send({ type: "pong" });
         break;
       case "create-room":
-        this.createRoom(conn);
+        this.createRoom(conn, message.pin);
         break;
       case "resume-host":
         this.resumeHost(conn, message.roomId, message.hostToken);
@@ -141,8 +143,10 @@ export class RoomRegistry {
 
   // ── Host lifecycle ────────────────────────────────────────────
 
-  private createRoom(conn: Conn) {
+  private createRoom(conn: Conn, pin?: string) {
     if (this.members.has(conn)) return this.error(conn, "bad-message", "already in a room");
+    const required = this.options.hostPin;
+    if (required && !safeEqual(required, pin ?? "")) return this.error(conn, "bad-pin");
     if (this.rooms.size >= (this.options.maxRooms ?? 10_000)) {
       return this.error(conn, "rate-limited", "server busy");
     }

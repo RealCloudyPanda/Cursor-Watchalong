@@ -58,6 +58,8 @@ export interface HostSessionOptions {
   wsUrl: string;
   publicOrigin: string;
   hostName: string;
+  /** Sent when creating the room; required if the server sets HOST_PIN. */
+  hostPin?: string;
   stream: MediaStream;
   /** A validated, permission-checked guest message that should act on the shared tab. */
   onGuestMessage: (guest: Participant, message: GuestMessage) => void;
@@ -216,7 +218,11 @@ export class HostSession {
           hostToken: this.hostToken,
         });
       } else {
-        this.sendServer({ type: "create-room", name: this.options.hostName });
+        this.sendServer({
+          type: "create-room",
+          name: this.options.hostName,
+          ...(this.options.hostPin ? { pin: this.options.hostPin } : {}),
+        });
       }
     };
     ws.onmessage = (event) => {
@@ -317,6 +323,11 @@ export class HostSession {
             this.end("server-lost");
             return;
           }
+        }
+        if (message.code === "bad-pin") {
+          this.setState({ error: "Wrong host PIN. Check it in the extension popup." });
+          this.end("error");
+          return;
         }
         if (message.code === "rate-limited" && !this.hostToken) {
           this.setState({ error: "Too many sessions started. Try again in a minute." });

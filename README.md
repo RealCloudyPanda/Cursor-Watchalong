@@ -162,6 +162,7 @@ The extension reads `WXT_*` variables from a `.env` file at build time (copy `.e
 | `WXT_PUBLIC_ORIGIN` | extension | `http://localhost:5173` | Base URL for invite links |
 | `WXT_WS_URL` | extension | `ws://localhost:8787/ws` | Signaling WebSocket URL |
 | `CF_TURN_KEY_ID`, `CF_TURN_API_TOKEN` | server | *(empty)* | Cloudflare Realtime TURN credentials. Uses public STUN only when empty. |
+| `HOST_PIN` | server | *(empty = off)* | PIN required to start a session (set with `scripts/set-host-pin.sh`). Guests never need it. |
 | `ALLOWED_ORIGINS` | server | *(empty = any)* | Comma-separated origins allowed to open the WebSocket (your site and `chrome-extension://<id>`) |
 | `ROOMS_PER_IP_PER_MIN`, `MAX_ROOMS` | server | `10`, `2000` | Abuse limits |
 

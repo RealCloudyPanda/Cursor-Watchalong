@@ -21,14 +21,16 @@ chrome.runtime.onMessage.addListener((message: ExtMessage, sender) => {
   if (message.target !== "offscreen" || sender.id !== chrome.runtime.id) return;
   switch (message.type) {
     case "start":
-      start(message.streamId, message.tabId, message.hostName).catch((err: unknown) => {
-        stopCapture();
-        sendExt({
-          target: "background",
-          type: "offscreen-error",
-          error: err instanceof Error ? err.message : String(err),
-        });
-      });
+      start(message.streamId, message.tabId, message.hostName, message.hostPin).catch(
+        (err: unknown) => {
+          stopCapture();
+          sendExt({
+            target: "background",
+            type: "offscreen-error",
+            error: err instanceof Error ? err.message : String(err),
+          });
+        },
+      );
       break;
     case "admit":
       session?.admit(message.guestId);
@@ -57,7 +59,7 @@ chrome.runtime.onMessage.addListener((message: ExtMessage, sender) => {
   }
 });
 
-async function start(streamId: string, tabId: number, hostName: string) {
+async function start(streamId: string, tabId: number, hostName: string, hostPin?: string) {
   if (session && session.snapshot.status !== "ended") return;
   const gen = ++generation;
   const tabSource = { chromeMediaSource: "tab", chromeMediaSourceId: streamId };
@@ -87,6 +89,7 @@ async function start(streamId: string, tabId: number, hostName: string) {
     wsUrl: WS_URL,
     publicOrigin: PUBLIC_ORIGIN,
     hostName,
+    hostPin,
     stream,
     onGuestMessage: (guest, message) => bridge?.deliverGuestMessage(guest, message),
     onGuestGone: (guestId) => bridge?.guestGone(guestId),

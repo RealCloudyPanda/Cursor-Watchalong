@@ -31,6 +31,7 @@ in memory and dies with the room.
 | Drawing | Freehand pen in the user's color, fixed width, smoothed. Fades **~3s after pen-up** (`STROKE_FADE_DELAY_MS`, configurable) over 500ms. |
 | Draw toggle | Visible **Draw** button + **hold Alt/Option** to draw temporarily. In draw mode, pointer input never reaches the page. |
 | Host UI | **Chrome side panel** (not captured): invite link, admit/deny, roster, per-guest control toggles, Draw toggle, End. Toolbar popup only starts sharing / opens the panel. |
+| Host PIN | Optional `HOST_PIN` on the server: creating a room requires it (entered once in the extension popup, stored locally). Guests never need it. Room creation is rate-limited per IP, which also limits PIN guessing. |
 | Joining | Invite link `https://<host>/r/<roomId>#k=<secret>`. Secret lives in the URL fragment (never sent in HTTP requests or logs; sent only over the WebSocket). Guest enters a name → **host must Admit**. |
 | Default guest rights | **Point + draw**. Host grants **control** per guest or for everyone; host can revoke at any time. |
 | Concurrent input | **All commands go through** in arrival order at the host; a toast ("Sam paused") shows who did what. |

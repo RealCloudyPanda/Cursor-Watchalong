@@ -35,7 +35,12 @@ const SignalPayload = z.union([
 // ── Client → server ──────────────────────────────────────────────
 
 export const ClientMessage = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("create-room"), name: DisplayName }),
+  z.object({
+    type: z.literal("create-room"),
+    name: DisplayName,
+    /** Required when the server sets HOST_PIN. */
+    pin: z.string().max(128).optional(),
+  }),
   z.object({
     type: z.literal("resume-host"),
     roomId: RoomId,
@@ -67,6 +72,7 @@ export const ErrorCode = z.enum([
   "not-host",
   "unknown-peer",
   "rate-limited",
+  "bad-pin",
 ]);
 export type ErrorCode = z.infer<typeof ErrorCode>;
 

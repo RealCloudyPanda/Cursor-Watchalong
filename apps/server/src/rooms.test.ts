@@ -325,4 +325,33 @@ describe("RoomRegistry", () => {
     send(guest, { type: "signal", to: created.hostId, payload: { candidate: null } });
     expect(guest.sent.some((m) => m.type === "error")).toBe(false);
   });
+
+  it("requires the host PIN to create a room when one is configured", () => {
+    const locked = new RoomRegistry({ iceServers: () => ice, hostPin: "482913" });
+    const wrong = new FakeConn();
+    locked.handle(wrong, { type: "create-room", name: "Eve", pin: "000000" });
+    expect(wrong.last("error").code).toBe("bad-pin");
+    const none = new FakeConn();
+    locked.handle(none, { type: "create-room", name: "Eve" });
+    expect(none.last("error").code).toBe("bad-pin");
+    const right = new FakeConn();
+    locked.handle(right, { type: "create-room", name: "Ava", pin: "482913" });
+    expect(right.last("room-created")).toBeDefined();
+    expect(locked.roomCount).toBe(1);
+  });
+
+  it("does not ask guests for the PIN", () => {
+    const locked = new RoomRegistry({ iceServers: () => ice, hostPin: "482913" });
+    const host = new FakeConn();
+    locked.handle(host, { type: "create-room", name: "Ava", pin: "482913" });
+    const created = host.last("room-created");
+    const guest = new FakeConn();
+    locked.handle(guest, {
+      type: "join",
+      roomId: created.roomId,
+      secret: created.secret,
+      name: "Sam",
+    });
+    expect(guest.last("waiting-for-host")).toBeDefined();
+  });
 });

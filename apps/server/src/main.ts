@@ -24,6 +24,7 @@ const ice = new IceProvider({
 const registry = new RoomRegistry({
   iceServers: () => ice.current(),
   maxRooms: Number(process.env.MAX_ROOMS ?? 2_000),
+  hostPin: process.env.HOST_PIN?.trim() || undefined,
 });
 /**
  * Browser origins allowed to open the WebSocket (comma-separated). The extension's offscreen
@@ -161,6 +162,7 @@ wss.on("connection", (ws, req) => {
       conn.send({ type: "error", code: "bad-message", message: parsed.error });
       return;
     }
+    // Room creation (and therefore PIN guessing) is limited per IP.
     if (parsed.value.type === "create-room" && !createLimiter.allow(ip)) {
       conn.send({ type: "error", code: "rate-limited" });
       return;
@@ -180,7 +182,9 @@ wss.on("connection", (ws, req) => {
 ice.start().finally(() => {
   http.listen(PORT, () => {
     console.log(
-      `cursor-watchalong server on http://localhost:${PORT} (ws at /ws, TURN ${
+      `cursor-watchalong server on http://localhost:${PORT} (ws at /ws, host PIN ${
+        process.env.HOST_PIN?.trim() ? "required" : "off"
+      }, TURN ${
         ice.turnActive
           ? "on"
           : ice.turnConfigured

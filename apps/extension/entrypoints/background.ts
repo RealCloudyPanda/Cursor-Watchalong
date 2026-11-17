@@ -1,6 +1,12 @@
 import { isLikelyDrmHost } from "@watchalong/protocol";
 import { defineBackground } from "wxt/utils/define-background";
-import { type ExtMessage, HOST_NAME_KEY, IDLE_SESSION, sendExt } from "../lib/messages";
+import {
+  type ExtMessage,
+  HOST_NAME_KEY,
+  HOST_PIN_KEY,
+  IDLE_SESSION,
+  sendExt,
+} from "../lib/messages";
 import { patchSession, readSession, replaceSession } from "../lib/session";
 
 const OFFSCREEN_PATH = "/offscreen.html";
@@ -106,14 +112,22 @@ async function startSharing(tabId: number) {
   });
 
   await ensureOffscreen();
-  const stored = await chrome.storage.local.get(HOST_NAME_KEY);
+  const stored = await chrome.storage.local.get([HOST_NAME_KEY, HOST_PIN_KEY]);
+  const hostPin = typeof stored[HOST_PIN_KEY] === "string" ? stored[HOST_PIN_KEY].trim() : "";
   const hostName =
     typeof stored[HOST_NAME_KEY] === "string" && stored[HOST_NAME_KEY].trim()
       ? stored[HOST_NAME_KEY].trim().slice(0, 32)
       : "Host";
   // Stream IDs expire after a few seconds, so mint it last, right before it's consumed.
   const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
-  await sendExt({ target: "offscreen", type: "start", streamId, tabId, hostName });
+  await sendExt({
+    target: "offscreen",
+    type: "start",
+    streamId,
+    tabId,
+    hostName,
+    ...(hostPin ? { hostPin } : {}),
+  });
 }
 
 async function failStart(err: unknown) {

@@ -9,12 +9,13 @@ import { CircleAlert, PanelRight, Radio, Square } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { useSession } from "../../components/useSession";
-import { HOST_NAME_KEY, sendExt } from "../../lib/messages";
+import { HOST_NAME_KEY, HOST_PIN_KEY, sendExt } from "../../lib/messages";
 import "../../lib/app.css";
 
 function Popup() {
   const session = useSession();
   const [name, setName] = useState("");
+  const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   // Resolved on open so the click handler can call gesture-gated APIs synchronously.
   const [tab, setTab] = useState<chrome.tabs.Tab | null>(null);
@@ -22,14 +23,20 @@ function Popup() {
 
   useEffect(() => {
     chrome.tabs.query({ active: true, currentWindow: true }).then(([t]) => setTab(t ?? null));
-    chrome.storage.local.get(HOST_NAME_KEY).then((v) => {
+    chrome.storage.local.get([HOST_NAME_KEY, HOST_PIN_KEY]).then((v) => {
       if (typeof v[HOST_NAME_KEY] === "string") setName(v[HOST_NAME_KEY]);
+      if (typeof v[HOST_PIN_KEY] === "string") setPin(v[HOST_PIN_KEY]);
     });
   }, []);
 
   const saveName = (value: string) => {
     setName(value);
     chrome.storage.local.set({ [HOST_NAME_KEY]: value.trim().slice(0, MAX_NAME_LENGTH) });
+  };
+
+  const savePin = (value: string) => {
+    setPin(value);
+    chrome.storage.local.set({ [HOST_PIN_KEY]: value.trim().slice(0, 128) });
   };
 
   const start = () => {
@@ -95,6 +102,23 @@ function Popup() {
               value={name}
               onChange={(e) => saveName(e.target.value)}
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="host-pin">Host PIN</Label>
+            <Input
+              id="host-pin"
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="Needed to start a session"
+              maxLength={128}
+              value={pin}
+              onChange={(e) => savePin(e.target.value)}
+              aria-invalid={session.error?.includes("PIN") || undefined}
+            />
+            <p className="text-xs text-muted-foreground">
+              Only people with the PIN can host. Guests don't need it. Saved on this device.
+            </p>
           </div>
           {session.error && (
             <Alert variant="destructive">
