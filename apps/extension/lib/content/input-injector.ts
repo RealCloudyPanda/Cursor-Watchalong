@@ -4,40 +4,42 @@
  * fullscreen/pop-ups can't be triggered. That's the accepted trade-off for not requiring the
  * `debugger` permission.
  *
- * When the point lands on an <iframe>, the input is forwarded to that frame's content script
- * with a per-session nonce, so the page itself can't forge it.
+ * When the point lands on an <iframe>, the input is handed to that frame's content script
+ * through the extension (never through page-visible messages), so pages can't forge it.
  */
 
-export const FRAME_MESSAGE_KEY = "__watchalongInput";
+export const PROBE_KEY = "__watchalongProbe";
 
 export type InjectedInput =
   | { kind: "click" | "dblclick"; x: number; y: number }
   | { kind: "wheel"; x: number; y: number; dx: number; dy: number };
 
-interface FrameMessage {
-  [FRAME_MESSAGE_KEY]: true;
-  nonce: string;
-  input: InjectedInput;
+/**
+ * Input for an iframe never travels through page-visible postMessage. Instead the parent
+ * registers the input with the extension under a one-time challenge and posts only the
+ * challenge to the child frame; the child's content script echoes the challenge over its own
+ * extension port, and the engine delivers the input to exactly that frame.
+ */
+export interface InputInjectorOptions {
+  /** Our own overlay element, which must never be the click target. */
+  ignore: () => Element | null;
+  /** Register input for the iframe that will acknowledge `challenge`. */
+  forwardToFrame: (challenge: string, input: InjectedInput) => void;
+  /** This frame received a probe from its parent: tell the engine. */
+  ackProbe: (challenge: string) => void;
 }
 
 export class InputInjector {
   private onMessage = (event: MessageEvent) => {
-    // Only accept input forwarded by our own script in the parent frame.
     if (event.source !== window.parent || window.parent === window) return;
-    const data = event.data as Partial<FrameMessage> | null;
-    if (data?.[FRAME_MESSAGE_KEY] !== true || data.nonce !== this.nonce) return;
-    const input = data.input;
-    if (!input || !isUnit(input.x) || !isUnit(input.y)) return;
-    if (input.kind !== "click" && input.kind !== "dblclick" && input.kind !== "wheel") return;
-    if (input.kind === "wheel" && !(Number.isFinite(input.dx) && Number.isFinite(input.dy))) return;
-    this.inject(input);
+    const data = event.data as Record<string, unknown> | null;
+    const challenge = data?.[PROBE_KEY];
+    if (typeof challenge === "string" && /^[0-9a-f-]{36}$/.test(challenge)) {
+      this.options.ackProbe(challenge);
+    }
   };
 
-  constructor(
-    private nonce: string,
-    /** Our own overlay element, which must never be the click target. */
-    private ignore: () => Element | null,
-  ) {
+  constructor(private options: InputInjectorOptions) {
     window.addEventListener("message", this.onMessage);
   }
 
@@ -60,7 +62,7 @@ export class InputInjector {
   }
 
   private hitTest(cx: number, cy: number): Element | null {
-    const ignored = this.ignore();
+    const ignored = this.options.ignore();
     let el =
       document.elementsFromPoint(cx, cy).find((e) => e !== ignored && !ignored?.contains(e)) ??
       null;
@@ -80,17 +82,18 @@ export class InputInjector {
     input: InjectedInput,
   ) {
     const rect = frame.getBoundingClientRect();
-    const left = rect.left + frame.clientLeft;
-    const top = rect.top + frame.clientTop;
+    if (!frame.contentWindow || frame.offsetWidth <= 0 || frame.offsetHeight <= 0) return;
+    // Undo CSS transforms (e.g. scale) before removing borders and normalizing.
+    const sx = rect.width / frame.offsetWidth;
+    const sy = rect.height / frame.offsetHeight;
+    const lx = (cx - rect.left) / sx - frame.clientLeft;
+    const ly = (cy - rect.top) / sy - frame.clientTop;
     const w = frame.clientWidth;
     const h = frame.clientHeight;
-    if (w <= 0 || h <= 0 || !frame.contentWindow) return;
-    const message: FrameMessage = {
-      [FRAME_MESSAGE_KEY]: true,
-      nonce: this.nonce,
-      input: { ...input, x: clamp01((cx - left) / w), y: clamp01((cy - top) / h) },
-    };
-    frame.contentWindow.postMessage(message, "*");
+    if (w <= 0 || h <= 0) return;
+    const challenge = crypto.randomUUID();
+    this.options.forwardToFrame(challenge, { ...input, x: clamp01(lx / w), y: clamp01(ly / h) });
+    frame.contentWindow.postMessage({ [PROBE_KEY]: challenge }, "*");
   }
 
   private click(target: Element, cx: number, cy: number, double: boolean) {
@@ -167,13 +170,18 @@ function findScroller(start: Element, dx: number, dy: number): Element {
   for (let el: Element | null = start; el; el = parentOf(el)) {
     if (el === document.body || el === document.documentElement) break;
     const style = getComputedStyle(el);
+    // Only an element that can still move in the requested direction takes the scroll;
+    // otherwise it chains outward, like real wheel input.
     const canY =
       dy !== 0 &&
       /(auto|scroll|overlay)/.test(style.overflowY) &&
-      el.scrollHeight > el.clientHeight;
+      (dy > 0 ? el.scrollTop + el.clientHeight < el.scrollHeight - 1 : el.scrollTop > 0);
     const canX =
-      dx !== 0 && /(auto|scroll|overlay)/.test(style.overflowX) && el.scrollWidth > el.clientWidth;
+      dx !== 0 &&
+      /(auto|scroll|overlay)/.test(style.overflowX) &&
+      (dx > 0 ? el.scrollLeft + el.clientWidth < el.scrollWidth - 1 : el.scrollLeft > 0);
     if (canY || canX) return el;
+    if (/(contain|none)/.test(style.overscrollBehavior)) return el;
   }
   return document.scrollingElement ?? document.documentElement;
 }
@@ -185,5 +193,3 @@ function parentOf(el: Element): Element | null {
 }
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
-const isUnit = (n: unknown): n is number =>
-  typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 1;

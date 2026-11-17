@@ -195,14 +195,31 @@ export function InputLayer({
     (e?: { pointerId: number }) => {
       const a = active.current;
       if (!a || (e && e.pointerId !== a.pointerId)) return;
-      flush();
+      // Drain the stroke's last point now (ignoring the budget) so nothing deferred can leak
+      // into the next stroke, then end it.
+      cancelAnimationFrame(flushRaf.current);
+      flushRaf.current = 0;
+      const last = pendingPoints.current[pendingPoints.current.length - 1];
+      if (last) send({ type: "stroke-point", strokeId: a.id, x: last.x, y: last.y });
+      pendingPoints.current = [];
       a.stroke.endedAt = performance.now();
       active.current = null;
       send({ type: "stroke-end", strokeId: a.id });
       repaint();
     },
-    [flush, repaint, send],
+    [repaint, send],
   );
+
+  // While the pen is down but still, re-send the last point so the host doesn't treat the
+  // stroke as abandoned (it ends strokes that go quiet for 5s).
+  useEffect(() => {
+    const id = setInterval(() => {
+      const a = active.current;
+      const last = a?.stroke.points[a.stroke.points.length - 1];
+      if (a && last) send({ type: "stroke-point", strokeId: a.id, x: last.x, y: last.y });
+    }, 2_000);
+    return () => clearInterval(id);
+  }, [send]);
 
   useEffect(() => {
     if (!drawing) endStroke();

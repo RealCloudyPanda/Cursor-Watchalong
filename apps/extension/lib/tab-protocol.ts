@@ -1,4 +1,5 @@
 import type { GuestMessage, MediaState, Participant } from "@watchalong/protocol";
+import type { InjectedInput } from "./content/input-injector";
 
 /**
  * Messages on the long-lived port between the content script (one per frame of the shared tab)
@@ -10,8 +11,6 @@ export type ToTab =
   | {
       type: "hello";
       isTop: boolean;
-      /** Shared secret for parent → child frame messages (clicks inside iframes, M4). */
-      nonce: string;
       drawing: boolean;
       roster: Participant[];
     }
@@ -20,6 +19,8 @@ export type ToTab =
   | { type: "guest-gone"; id: string }
   | { type: "set-drawing"; drawing: boolean }
   | { type: "draw-key"; key: DrawKey }
+  /** Input forwarded from a parent frame (see InputInjector). */
+  | { type: "inject"; input: InjectedInput }
   | { type: "end" };
 
 export type FromTab =
@@ -27,6 +28,8 @@ export type FromTab =
   | { type: "viewport"; width: number; height: number }
   | { type: "drawing-changed"; drawing: boolean }
   /** Alt/Escape pressed while focus is inside a child frame, relayed to the top overlay. */
-  | { type: "draw-key"; key: DrawKey };
+  | { type: "draw-key"; key: DrawKey }
+  | { type: "frame-input"; challenge: string; input: InjectedInput }
+  | { type: "probe-ack"; challenge: string };
 
 export type DrawKey = "alt-down" | "alt-up" | "escape";

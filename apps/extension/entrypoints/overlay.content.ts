@@ -17,8 +17,16 @@ export default defineContentScript({
   allFrames: true,
   runAt: "document_idle",
   main() {
-    const w = window as Window & { __watchalongInstalled?: boolean; __watchalongActive?: boolean };
-    if (w.__watchalongInstalled) return;
+    const w = window as Window & {
+      __watchalongInstalled?: boolean;
+      __watchalongActive?: boolean;
+      __watchalongConnect?: () => void;
+    };
+    if (w.__watchalongInstalled) {
+      // Injected again for a new session on the same page: reconnect if we went inert.
+      if (!w.__watchalongActive) w.__watchalongConnect?.();
+      return;
+    }
     w.__watchalongInstalled = true;
 
     // Chrome closes extension ports when a page enters the back/forward cache and doesn't
@@ -26,6 +34,7 @@ export default defineContentScript({
     window.addEventListener("pageshow", (e) => {
       if (e.persisted && !w.__watchalongActive) connect();
     });
+    w.__watchalongConnect = connect;
     connect();
 
     function connect() {
@@ -66,7 +75,11 @@ export default defineContentScript({
       const start = (hello: Extract<ToTab, { type: "hello" }>) => {
         media = new MediaController((state, score) => post({ type: "media-report", state, score }));
         // Every frame gets an injector: child frames receive clicks forwarded by their parent.
-        injector = new InputInjector(hello.nonce, () => overlay?.element ?? null);
+        injector = new InputInjector({
+          ignore: () => overlay?.element ?? null,
+          forwardToFrame: (challenge, input) => post({ type: "frame-input", challenge, input }),
+          ackProbe: (challenge) => post({ type: "probe-ack", challenge }),
+        });
         if (!isTop) {
           // Keyboard events don't leave a focused iframe, so relay the draw keys to the top frame.
           const onKey = (e: KeyboardEvent, down: boolean) => {
@@ -135,6 +148,9 @@ export default defineContentScript({
             break;
           case "set-drawing":
             overlay?.setDrawing(message.drawing);
+            break;
+          case "inject":
+            injector?.inject(message.input);
             break;
           case "draw-key":
             if (message.key === "escape") overlay?.cancelPinnedDrawing();

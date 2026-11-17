@@ -9,14 +9,29 @@ import {
   type ServerMessage,
 } from "@watchalong/protocol";
 import { WebSocketServer } from "ws";
-import { defaultIceServers } from "./ice";
 import { RateLimiter } from "./rate-limit";
 import { type Conn, RoomRegistry } from "./rooms";
+import { IceProvider } from "./turn";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const WEB_DIST = resolve(fileURLToPath(new URL("../../web/dist", import.meta.url)));
 
-const registry = new RoomRegistry({ iceServers: defaultIceServers });
+const ice = new IceProvider({
+  keyId: process.env.CF_TURN_KEY_ID,
+  apiToken: process.env.CF_TURN_API_TOKEN,
+});
+const registry = new RoomRegistry({
+  iceServers: () => ice.current(),
+  maxRooms: Number(process.env.MAX_ROOMS ?? 2_000),
+});
+/**
+ * Browser origins allowed to open the WebSocket (comma-separated). The extension's offscreen
+ * document connects with its chrome-extension:// origin. Empty = allow all (local development).
+ */
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
 const createLimiter = new RateLimiter(Number(process.env.ROOMS_PER_IP_PER_MIN ?? 10), 60_000);
 const messageLimiter = new RateLimiter(100, 1_000); // signaling messages per socket per second
 
@@ -67,6 +82,11 @@ const http = createServer((req, res) => {
   res.writeHead(200, {
     "content-type": MIME[extname(file)] ?? "application/octet-stream",
     "referrer-policy": "no-referrer",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "cache-control": file.includes(`${sep}assets${sep}`)
+      ? "public, max-age=31536000, immutable"
+      : "no-cache",
   });
   createReadStream(file).pipe(res);
 });
@@ -74,6 +94,8 @@ const http = createServer((req, res) => {
 const wss = new WebSocketServer({
   server: http,
   path: "/ws",
+  verifyClient: ({ origin }: { origin?: string }) =>
+    ALLOWED_ORIGINS.length === 0 || (!!origin && ALLOWED_ORIGINS.includes(origin)),
   maxPayload: MAX_MESSAGE_BYTES * 4,
   perMessageDeflate: false,
 });
@@ -154,6 +176,21 @@ wss.on("connection", (ws, req) => {
   });
 });
 
-http.listen(PORT, () => {
-  console.log(`cursor-watchalong server on http://localhost:${PORT} (ws at /ws)`);
+ice.start().finally(() => {
+  http.listen(PORT, () => {
+    console.log(
+      `cursor-watchalong server on http://localhost:${PORT} (ws at /ws, TURN ${
+        ice.turnConfigured ? "on" : "off: STUN only"
+      })`,
+    );
+  });
 });
+
+const shutdown = () => {
+  ice.stop();
+  wss.close();
+  http.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 3_000).unref();
+};
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);

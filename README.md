@@ -7,7 +7,7 @@
 Like screen sharing, except guests can interact with the page instead of only watching it.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-![Status](https://img.shields.io/badge/status-early%20development-orange)
+![Status](https://img.shields.io/badge/status-beta-blue)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)
 ![Chrome MV3](https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?logo=googlechrome&logoColor=white)
 ![Node](https://img.shields.io/badge/node-%3E%3D22-339933?logo=nodedotjs&logoColor=white)
@@ -20,8 +20,9 @@ Like screen sharing, except guests can interact with the page instead of only wa
 ---
 
 > [!NOTE]
-> Cursor Watchalong is in **early development** (milestone M0). Room creation, invite links and
-> host approval are implemented. Live video streaming arrives in M1. See the [roadmap](#roadmap).
+> All five milestones are implemented and covered by unit and browser tests. Tab capture itself
+> can only be exercised by hand (Chrome requires a real click on the extension), so try it in your
+> own Chrome before publishing. See [Testing](#testing).
 
 ## Overview
 
@@ -90,6 +91,7 @@ architecture, protocol and trade-offs.
 | Area | Tools |
 | --- | --- |
 | Extension | [WXT](https://wxt.dev) (Manifest V3), React, offscreen documents, `chrome.tabCapture`, side panel |
+| UI | [shadcn/ui](https://ui.shadcn.com) on Radix, Tailwind CSS v4, lucide icons, sonner toasts (shared `packages/ui`) |
 | Guest app | React, Vite |
 | Server | Node.js, [`ws`](https://github.com/websockets/ws), in-memory rooms |
 | Realtime | WebRTC (P2P mesh), DataChannels, Cloudflare TURN |
@@ -104,9 +106,11 @@ cursor-watchalong/
 ├── apps/
 │   ├── extension/     # Chrome extension: background, offscreen capture, popup, side panel
 │   ├── server/        # Signaling server with in-memory rooms; serves the guest app
-│   └── web/           # Guest web app (/r/<roomId>#k=<secret>)
+│   └── web/           # Guest web app (/r/<roomId>#k=<secret>) + Playwright e2e
 ├── packages/
-│   └── protocol/      # Message schemas, coordinate math, shared constants
+│   ├── host-core/     # Host engine: signaling, WebRTC per guest, roster, permissions
+│   ├── protocol/      # Message schemas, coordinate math, shared constants
+│   └── ui/            # shadcn/ui components and the Watchalong theme
 └── docs/
     └── design.md      # Product and technical decisions, milestones
 ```
@@ -157,7 +161,9 @@ The extension reads `WXT_*` variables from a `.env` file at build time (copy `.e
 | `PORT` | server | `8787` | HTTP and WebSocket port |
 | `WXT_PUBLIC_ORIGIN` | extension | `http://localhost:5173` | Base URL for invite links |
 | `WXT_WS_URL` | extension | `ws://localhost:8787/ws` | Signaling WebSocket URL |
-| `CF_TURN_KEY_ID`, `CF_TURN_API_TOKEN` | server | *(empty)* | Cloudflare TURN credentials (M5). Uses public STUN only when empty. |
+| `CF_TURN_KEY_ID`, `CF_TURN_API_TOKEN` | server | *(empty)* | Cloudflare Realtime TURN credentials. Uses public STUN only when empty. |
+| `ALLOWED_ORIGINS` | server | *(empty = any)* | Comma-separated origins allowed to open the WebSocket (your site and `chrome-extension://<id>`) |
+| `ROOMS_PER_IP_PER_MIN`, `MAX_ROOMS` | server | `10`, `2000` | Abuse limits |
 
 ## Scripts
 
@@ -168,9 +174,26 @@ The extension reads `WXT_*` variables from a `.env` file at build time (copy `.e
 | `pnpm dev:ext` | Run the extension in development mode |
 | `pnpm build` | Build every package |
 | `pnpm test` | Run the unit tests |
+| `pnpm --filter @watchalong/web e2e` | Run the Playwright browser tests (real WebRTC between two browsers) |
+| `pnpm --filter @watchalong/extension zip` | Package the extension for the Chrome Web Store |
+| `node scripts/render-icons.mjs` | Regenerate extension icons from `apps/extension/assets/icon.svg` |
 | `pnpm typecheck` | Type-check every package |
 | `pnpm lint` | Lint and check formatting |
 | `pnpm format` | Fix formatting and safe lint issues |
+
+## Testing
+
+- **Unit tests** (Vitest) cover the protocol, room server, host engine helpers, TURN credentials,
+  shortcuts and video selection.
+- **Browser tests** (Playwright, installed Chrome) run real WebRTC sessions between a scripted
+  host page and guest pages: admission, live video with decoded frames and audible audio,
+  deny/kick/leave/end, signaling reconnects, playback control and permissions, cursors, drawing
+  and fade timing, clicks, scrolling and iframe forwarding.
+- **By hand:** Chrome only allows tab capture after a real click on the extension's icon, so the
+  capture path (popup → offscreen → stream) can't be automated. Load the unpacked build, share a
+  YouTube tab, and join from another browser or device.
+
+Every milestone was also reviewed by parallel Codex (GPT-6.1 Sol) agents, and their findings were fixed.
 
 ## Deployment
 
@@ -183,14 +206,24 @@ fly deploy
 
 Run a **single instance**: rooms live in memory, so a restart or redeploy ends every active session.
 
+```bash
+fly secrets set CF_TURN_KEY_ID=... CF_TURN_API_TOKEN=... ALLOWED_ORIGINS=https://cursor-watchalong.fly.dev,chrome-extension://<id>
+```
+
+For a store build, put `WXT_PUBLIC_ORIGIN` and `WXT_WS_URL` in `apps/extension/.env.production`,
+then run `pnpm --filter @watchalong/extension zip`. Listing copy and permission justifications are in
+[docs/store-listing.md](docs/store-listing.md); the privacy policy is served at `/privacy`.
+
 ## Roadmap
 
 - [x] **M0 · Foundation**: monorepo, message protocol, room server, host approval, guest join flow
-- [ ] **M1 · Streaming**: 1080p tab video and audio from host to one guest
-- [ ] **M2 · Playback**: play, pause and seek from guests, plus keyboard shortcuts
-- [ ] **M3 · Cursors and drawing**: named cursors and fading freehand marks
-- [ ] **M4 · Page control**: clicks and scrolling, per-guest control permissions
-- [ ] **M5 · Launch**: up to four guests, TURN relay, reconnection, Chrome Web Store release
+- [x] **M1 · Streaming**: 1080p tab video and audio from host to guests, reconnects
+- [x] **M2 · Playback**: play, pause and seek from guests, plus keyboard shortcuts
+- [x] **M3 · Cursors and drawing**: named cursors and fading freehand marks
+- [x] **M4 · Page control**: clicks and scrolling, per-guest control permissions
+- [x] **M5 · Launch prep**: up to four guests, Cloudflare TURN, icons, privacy policy, store listing
+- [ ] Publish: deploy to Fly.io, set TURN secrets, submit to the Chrome Web Store
+- [ ] Later: Netflix-style sync mode (each person plays their own stream)
 
 ## Known limitations
 

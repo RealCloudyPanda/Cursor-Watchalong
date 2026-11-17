@@ -47,6 +47,14 @@ export class MediaController {
     { threshold: [0, 0.1, 0.25, 0.5, 0.75, 1] },
   );
 
+  /** A fully visible video that resizes doesn't re-fire IntersectionObserver; re-observe it. */
+  private ro = new ResizeObserver((entries) => {
+    for (const e of entries) {
+      this.io.unobserve(e.target);
+      this.io.observe(e.target);
+    }
+  });
+
   constructor(private report: (state: MediaState, score: number) => void) {
     this.rescan();
     this.rescanTimer = setInterval(() => this.rescan(), RESCAN_MS);
@@ -87,6 +95,7 @@ export class MediaController {
   dispose() {
     clearInterval(this.rescanTimer);
     this.io.disconnect();
+    this.ro.disconnect();
     this.attach(null);
   }
 
@@ -102,6 +111,7 @@ export class MediaController {
       if (!this.observed.has(v)) {
         this.observed.add(v);
         this.io.observe(v);
+        this.ro.observe(v);
       }
     }
     const index = pickMainVideo(

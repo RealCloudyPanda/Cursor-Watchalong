@@ -89,35 +89,45 @@ test("injected clicks hit the element under the point, through the overlay and i
   expect(await page.evaluate(() => document.getElementById("scroller")?.scrollTop)).toBe(300);
 });
 
-test("a forged frame message without the session nonce is ignored", async ({ page }) => {
+test("clicks on an iframe are handed to the extension, not posted to the page", async ({
+  page,
+}) => {
   await page.goto("/e2e-harness/overlay.html");
-  const frame = page.frameLocator("#frame");
-  await expect(frame.getByRole("button", { name: "Inner" })).toBeVisible();
-  // The parent page (not our extension) tries to click inside the iframe.
+  const vw = await page.evaluate(() => window.innerWidth);
+  const vh = await page.evaluate(() => window.innerHeight);
+  // Track what the child frame's page can observe.
   await page.evaluate(() => {
     const f = document.getElementById("frame") as HTMLIFrameElement;
-    f.contentWindow?.postMessage(
-      { __watchalongInput: true, nonce: "guess", input: { kind: "click", x: 0.5, y: 0.5 } },
-      "*",
-    );
+    (window as any).__seen = [];
+    f.contentWindow?.addEventListener("message", (e) => (window as any).__seen.push(e.data));
   });
-  // No injector runs inside this srcdoc frame in the harness, so we only assert no crash here;
-  // nonce checking itself is covered by the injector's own message handler below.
-  const accepted = await page.evaluate(() => {
-    const { injector } = (window as any).__overlay;
-    let hit = false;
-    const orig = injector.inject.bind(injector);
-    injector.inject = (i: unknown) => {
-      hit = true;
-      return orig(i);
-    };
-    window.dispatchEvent(
-      new MessageEvent("message", {
-        data: { __watchalongInput: true, nonce: "wrong", input: { kind: "click", x: 0.1, y: 0.1 } },
-        source: window,
-      }),
-    );
-    return hit;
+  // Point at 3/4 across and 1/3 down the iframe (left 400, top 100, 300x150).
+  await page.evaluate(
+    ([x, y]) => (window as any).__overlay.injector.inject({ kind: "click", x, y }),
+    [(400 + 225) / vw, (100 + 50) / vh],
+  );
+  await page.waitForTimeout(100);
+  const forwarded = await page.evaluate(() => (window as any).__overlay.forwarded);
+  expect(forwarded).toHaveLength(1);
+  expect(forwarded[0].input.kind).toBe("click");
+  expect(forwarded[0].input.x).toBeCloseTo(0.75, 2);
+  expect(forwarded[0].input.y).toBeCloseTo(1 / 3, 2);
+  // The page inside the iframe only ever sees a one-time challenge, never the input itself.
+  const seen = await page.evaluate(() => (window as any).__seen);
+  expect(seen).toEqual([{ __watchalongProbe: forwarded[0].challenge }]);
+});
+
+test("scrolling chains to the page once a nested scroller hits its end", async ({ page }) => {
+  await page.goto("/e2e-harness/overlay.html");
+  const vw = await page.evaluate(() => window.innerWidth);
+  const vh = await page.evaluate(() => window.innerHeight);
+  await page.evaluate(() => {
+    const s = document.getElementById("scroller") as HTMLElement;
+    s.scrollTop = s.scrollHeight;
   });
-  expect(accepted).toBe(false);
+  await page.evaluate(
+    ([x, y]) => (window as any).__overlay.injector.inject({ kind: "wheel", x, y, dx: 0, dy: 200 }),
+    [200 / vw, 360 / vh],
+  );
+  expect(await page.evaluate(() => window.scrollY)).toBe(200);
 });

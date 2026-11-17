@@ -1,6 +1,6 @@
 # Cursor Watchalong — Design
 
-Status: agreed (grilling session, 2026-11-16). This captures every decision made so far; change it
+Status: implemented through M5 (2026-11-16). This captures every decision made so far; change it
 here first when a decision changes.
 
 ## 1. Product summary
@@ -37,7 +37,9 @@ in memory and dies with the room.
 | Reconnect | Room survives **30s** after host socket drops. Guests auto-reconnect with a rejoin token (`sessionStorage`) and skip re-approval within 5 min. Host **End** or closing the shared tab ends the room immediately. |
 | Comms | No voice or text chat in v1 (assume Discord/a call). |
 | DRM | **Warn** on known DRM domains (Netflix, Disney+, Max, Prime Video, Hulu, Apple TV+) in the side panel; sharing still allowed. Netflix sync-mode is a future project. |
-| Permissions | Required: `tabCapture`, `offscreen`, `scripting`, `storage`, `sidePanel`, `activeTab`. **Optional host permission `<all_urls>`**, requested on first Start Sharing so the content script survives cross-origin navigation and runs in iframes. |
+| Permissions | Required: `tabCapture`, `offscreen`, `scripting`, `storage`, `sidePanel`, `activeTab`. **Optional host permission `<all_urls>`**, requested on first Start Sharing so the content script survives cross-origin navigation and runs in iframes. Minimum Chrome 119. |
+| Iframe input | Never via page-visible messages carrying authority: the parent registers the input with the engine under a one-time challenge, posts only the challenge, and the child's content script claims it over its extension port. |
+| UI | shadcn/ui + Tailwind v4 in a shared `packages/ui`, dark theme with a violet accent. |
 
 ## 3. Tech stack
 

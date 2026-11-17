@@ -19,7 +19,12 @@ overlay.setRoster([
   { id: "host0001", name: "Hosty", color: "#ff4d6d", role: "host", canControl: true },
   { id: "guest001", name: "Sam", color: "#4dabf7", role: "guest", canControl: true },
 ]);
-const injector = new InputInjector("nonce-123", () => document.querySelector("watchalong-overlay"));
+const forwarded: { challenge: string; input: unknown }[] = [];
+const injector = new InputInjector({
+  ignore: () => document.querySelector("watchalong-overlay"),
+  forwardToFrame: (challenge, input) => forwarded.push({ challenge, input }),
+  ackProbe: () => {},
+});
 
 /** Count opaque pixels in the overlay canvas (closed shadow root, so read via drawImage). */
 function overlayInk(): number {
@@ -36,4 +41,6 @@ function overlayInk(): number {
   return n;
 }
 
-Object.assign(window, { __overlay: { overlay, injector, clicks, drawingChanges, overlayInk } });
+Object.assign(window, {
+  __overlay: { overlay, injector, clicks, drawingChanges, overlayInk, forwarded },
+});

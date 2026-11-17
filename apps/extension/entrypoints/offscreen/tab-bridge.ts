@@ -1,6 +1,21 @@
 import { type GuestMessage, MediaState, type Participant } from "@watchalong/protocol";
+import type { InjectedInput } from "../../lib/content/input-injector";
 import { PORT_NAME } from "../../lib/messages";
 import type { FromTab, ToTab } from "../../lib/tab-protocol";
+
+const unit = (n: unknown) => typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 1;
+function validInput(i: unknown): i is InjectedInput {
+  const v = i as InjectedInput | null;
+  if (!v || !unit(v.x) || !unit(v.y)) return false;
+  if (v.kind === "click" || v.kind === "dblclick") return true;
+  return (
+    v.kind === "wheel" &&
+    Number.isFinite(v.dx) &&
+    Number.isFinite(v.dy) &&
+    Math.abs(v.dx) <= 5_000 &&
+    Math.abs(v.dy) <= 5_000
+  );
+}
 
 export interface TabBridgeOptions {
   onMediaState: (state: MediaState) => void;
@@ -24,10 +39,11 @@ interface FrameLink {
 export class TabBridge {
   private frames = new Map<number, FrameLink>();
   private mediaFrame: number | null = null;
-  private readonly nonce = crypto.randomUUID();
   private drawing = false;
   private rosterKey = "";
   private roster: Participant[] = [];
+  /** challenge → input registered by a parent frame, waiting for the child's acknowledgement. */
+  private pendingInputs = new Map<string, { input: InjectedInput; from: number; at: number }>();
 
   constructor(
     readonly tabId: number,
@@ -102,7 +118,6 @@ export class TabBridge {
     this.post(frameId, {
       type: "hello",
       isTop: frameId === 0,
-      nonce: this.nonce,
       drawing: this.drawing,
       roster: this.roster,
     });
@@ -126,6 +141,27 @@ export class TabBridge {
           this.options.onViewport({ width: message.width, height: message.height });
         }
         break;
+      case "frame-input": {
+        if (typeof message.challenge !== "string" || !validInput(message.input)) return;
+        const now = Date.now();
+        for (const [k, v] of this.pendingInputs)
+          if (now - v.at > 2_000) this.pendingInputs.delete(k);
+        if (this.pendingInputs.size < 32) {
+          this.pendingInputs.set(message.challenge, {
+            input: message.input,
+            from: frameId,
+            at: now,
+          });
+        }
+        break;
+      }
+      case "probe-ack": {
+        const pending = this.pendingInputs.get(message.challenge);
+        if (!pending || pending.from === frameId) return;
+        this.pendingInputs.delete(message.challenge);
+        this.post(frameId, { type: "inject", input: pending.input });
+        break;
+      }
       case "draw-key":
         if (frameId !== 0 && ["alt-down", "alt-up", "escape"].includes(message.key)) {
           this.post(0, { type: "draw-key", key: message.key });

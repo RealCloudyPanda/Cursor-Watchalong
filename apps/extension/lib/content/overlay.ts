@@ -247,6 +247,7 @@ export class Overlay {
   }
 
   private trackHostPointer(e: PointerEvent) {
+    if (!e.isTrusted) return;
     const n = this.toNorm(e.clientX, e.clientY);
     this.cursor(HOST_ID, n.x, n.y);
   }
@@ -264,7 +265,8 @@ export class Overlay {
   }
 
   private hostDrawStart(e: PointerEvent) {
-    if (!this.drawing || !this.isOverlayEvent(e)) return;
+    // Only the host's real pointer draws; injected guest events must never start strokes.
+    if (!e.isTrusted || !this.drawing || !this.isOverlayEvent(e)) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     if (e.button !== 0 || this.hostPointer !== null) return;
@@ -281,7 +283,7 @@ export class Overlay {
   }
 
   private hostDrawMove(e: PointerEvent) {
-    if (!this.hostStroke || e.pointerId !== this.hostPointer) return;
+    if (!e.isTrusted || !this.hostStroke || e.pointerId !== this.hostPointer) return;
     e.stopImmediatePropagation();
     for (const ev of e.getCoalescedEvents?.() ?? [e]) {
       const n = this.toNorm(ev.clientX, ev.clientY);
@@ -291,7 +293,7 @@ export class Overlay {
 
   private hostDrawEnd(e?: Event) {
     if (e instanceof PointerEvent) {
-      if (e.pointerId !== this.hostPointer) return;
+      if (!e.isTrusted || e.pointerId !== this.hostPointer) return;
       e.stopImmediatePropagation();
     }
     this.hostPointer = null;
@@ -327,7 +329,13 @@ export class Overlay {
     const h = window.innerHeight;
     for (const [key, s] of this.strokes) {
       let alpha = 1;
-      if (s.endedAt === null && now - s.lastActivity > ABANDONED_STROKE_MS) s.endedAt = now;
+      if (
+        s.endedAt === null &&
+        key !== `${HOST_ID}:${this.hostStroke}` &&
+        now - s.lastActivity > ABANDONED_STROKE_MS
+      ) {
+        s.endedAt = now;
+      }
       if (s.endedAt !== null) {
         const t = now - s.endedAt - STROKE_FADE_DELAY_MS;
         if (t >= STROKE_FADE_DURATION_MS) {
