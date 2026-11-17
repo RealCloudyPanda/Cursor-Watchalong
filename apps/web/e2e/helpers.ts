@@ -57,10 +57,16 @@ export interface HostHandle {
   received: () => Promise<{ from: { id: string; name: string }; message: any }[]>;
 }
 
-export async function startHost(browser: Browser, name = "Hosty"): Promise<HostHandle> {
+export async function startHost(
+  browser: Browser,
+  name = "Hosty",
+  opts: { scene?: boolean } = {},
+): Promise<HostHandle> {
   const ctx = await newContext(browser);
   const page = await ctx.newPage();
-  await page.goto(`/e2e-harness/host.html?name=${encodeURIComponent(name)}`);
+  await page.goto(
+    `/e2e-harness/host.html?name=${encodeURIComponent(name)}${opts.scene ? "&scene" : ""}`,
+  );
   await expect
     .poll(() => page.evaluate(() => (window as any).__host.state?.inviteUrl), { timeout: 15_000 })
     .toBeTruthy();

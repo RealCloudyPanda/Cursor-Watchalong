@@ -354,4 +354,22 @@ describe("RoomRegistry", () => {
     });
     expect(guest.last("waiting-for-host")).toBeDefined();
   });
+
+  it("doesn't let a rejoining guest exceed the room size", () => {
+    const { host, created } = createRoom();
+    const first = joinAndAdmit(host, created, "A");
+    const { rejoinToken } = first.guest.last("admitted");
+    for (const n of ["B", "C", "D"]) joinAndAdmit(host, created, n);
+    registry.disconnect(first.guest);
+    joinAndAdmit(host, created, "E"); // takes the free slot
+    const back = new FakeConn();
+    send(back, {
+      type: "join",
+      roomId: created.roomId,
+      secret: created.secret,
+      name: "A",
+      rejoinToken,
+    });
+    expect(back.last("error").code).toBe("room-full");
+  });
 });

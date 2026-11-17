@@ -1,57 +1,138 @@
 <div align="center">
 
-# Cursor Watchalong
+<img src="docs/store-assets/promo-marquee-1400x560.png" alt="Cursor Watchalong: watch together, point, draw and control" width="100%" />
 
-**Share a live Chrome tab with friends who can point, draw, and take the wheel.**
+<h1>Cursor Watchalong</h1>
 
-Like screen sharing, except guests can interact with the page instead of only watching it.
+<p><strong>Share a live Chrome tab with friends who can point, draw, and take the wheel.</strong><br />
+Screen sharing where guests interact with the page instead of only watching it.</p>
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-![Status](https://img.shields.io/badge/status-beta-blue)
-![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)
-![Chrome MV3](https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?logo=googlechrome&logoColor=white)
-![Node](https://img.shields.io/badge/node-%3E%3D22-339933?logo=nodedotjs&logoColor=white)
-![pnpm](https://img.shields.io/badge/pnpm-workspaces-f69220?logo=pnpm&logoColor=white)
+<p>
+  <a href="https://cursor-watchalong.fly.dev"><img alt="Live" src="https://img.shields.io/badge/live-cursor--watchalong.fly.dev-8b5cf6?logo=flydotio&logoColor=white" /></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
+  <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?logo=googlechrome&logoColor=white" />
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white" />
+  <img alt="WebRTC" src="https://img.shields.io/badge/WebRTC-peer--to--peer-333?logo=webrtc&logoColor=white" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-68%20unit%20%C2%B7%2024%20browser-22c55e" />
+</p>
 
-[Overview](#overview) · [Features](#features) · [How it works](#how-it-works) · [Getting started](#getting-started) · [Roadmap](#roadmap) · [Design doc](docs/design.md)
+<p>
+  <a href="#features">Features</a> ·
+  <a href="#screenshots">Screenshots</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#getting-started">Getting started</a> ·
+  <a href="#deployment">Deployment</a> ·
+  <a href="#security--privacy">Security</a> ·
+  <a href="docs/design.md">Design doc</a>
+</p>
 
 </div>
 
 ---
 
-> [!NOTE]
-> All five milestones are implemented and covered by unit and browser tests. Tab capture itself
-> can only be exercised by hand (Chrome requires a real click on the extension), so try it in your
-> own Chrome before publishing. See [Testing](#testing).
-
 ## Overview
 
-A host shares one tab through the Chrome extension and sends friends an invite link. Guests join
-from a regular web page, with **no install and no account**. Everyone sees each other's named
-cursors and can draw quick marks over the page that fade after a few seconds.
+A host shares one tab through the Chrome extension and sends an invite link. Friends join from a
+regular web page with **no install and no account**. Everyone sees each other's named cursors and
+can draw quick marks that fade after a few seconds. When the host allows it, guests can play,
+pause, seek, click and scroll in the host's real tab.
 
-The main use case is watching videos together. When someone spots a detail in a YouTube video,
-they can pause it, circle the detail, and press play again. Everyone sees it happen in the same
-shared tab.
+It's built for watching videos together: spot a detail, pause, circle it, hit play.
 
-**No accounts and no database.** Rooms exist only in the server's memory while a session is
-running. Video, audio, cursors and drawings travel directly between participants over WebRTC.
+- **No database.** Rooms live in memory on a small signaling server and disappear when they end.
+- **Peer-to-peer.** Video, audio, cursors and drawings go directly between browsers over
+  encrypted WebRTC, with a Cloudflare TURN relay for restrictive networks.
+- **Host in control.** The host approves every guest, chooses who can control the tab, and can
+  require a PIN to start sessions at all.
 
 ## Features
 
-| | Feature | Details |
-| --- | --- | --- |
-| 🔗 | **Invite links** | Unguessable room links. The secret lives in the URL fragment, so it never appears in server logs. |
-| ✅ | **Host approval** | The host admits or denies each guest before they can see anything. |
-| 📺 | **Live tab sharing** | The host's tab video and audio at up to 1080p30, sent peer to peer. |
-| 🖱️ | **Shared cursors** | Every participant has a colored, named cursor. |
-| ✏️ | **Fading drawings** | Freehand marks that fade about three seconds after you finish drawing. |
-| ⏯️ | **Playback control** | Play, pause and seek the page's video, plus familiar shortcuts (Space/K, J/L, arrows, M). |
-| 👆 | **Page interaction** | Guests with control can click and scroll in the shared tab. |
-| 🛡️ | **Host stays in charge** | Guests start with point and draw only. The host grants control per guest and can end the session at any time. |
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <h4>📺 Live tab sharing</h4>
+      The host's tab video and audio at up to 1080p30, with stereo audio and adaptive quality.
+    </td>
+    <td width="50%" valign="top">
+      <h4>🔗 Invite links + approval</h4>
+      Unguessable links (the secret never reaches server logs). Each guest waits until the host admits them.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h4>🖱️ Named cursors</h4>
+      Every participant gets a color and a name tag, drawn right in the host's tab so everyone sees the same thing.
+    </td>
+    <td valign="top">
+      <h4>✏️ Fading drawings</h4>
+      Freehand marks in your color that fade about three seconds after you lift the pen. Press <kbd>D</kbd> or hold <kbd>Alt</kbd>.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h4>⏯️ Playback control</h4>
+      Play, pause, seek and mute the page's video, with YouTube-style shortcuts (<kbd>Space</kbd>, <kbd>K</kbd>, <kbd>J</kbd>/<kbd>L</kbd>, arrows, <kbd>M</kbd>).
+    </td>
+    <td valign="top">
+      <h4>👆 Clicks and scrolling</h4>
+      Guests with control click, double-click and scroll in the real page, including inside embedded players.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h4>🛡️ Permissions</h4>
+      Guests start with point and draw only. The host grants control per guest or to everyone, and can revoke it instantly.
+    </td>
+    <td valign="top">
+      <h4>🔄 Resilient</h4>
+      Survives dropped connections: a 30-second host grace period, silent guest rejoin, and ICE restarts.
+    </td>
+  </tr>
+</table>
 
-Guests can only act on the one tab the host chose to share. They can't reach other tabs, the
-address bar, or the rest of the browser.
+## Screenshots
+
+<table>
+  <tr>
+    <td colspan="2" align="center">
+      <img src="docs/screenshots/room.png" alt="Guest room: the host's live tab with a guest's drawing, playback controls and Draw toggle" />
+      <br /><sub><b>Guest view:</b> the host's live tab, a guest's circle in their color, playback controls and the Draw toggle.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/store-assets/screenshot-2-draw.png" alt="Named cursors and a fading drawing inside the shared tab" />
+      <br /><sub><b>In the shared tab:</b> named cursors and a fading mark, baked into the stream.</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/screenshots/join.png" alt="Join screen asking for a display name" />
+      <br /><sub><b>Join:</b> guests pick a name. No account, no install.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/screenshots/waiting.png" alt="Waiting for the host to admit the guest" />
+      <br /><sub><b>Waiting room:</b> the host approves every guest.</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/screenshots/landing.png" alt="Landing page" />
+      <br /><sub><b>Landing page</b> at cursor-watchalong.fly.dev.</sub>
+    </td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td width="34%" align="center" valign="top">
+      <img src="docs/screenshots/popup.png" alt="Extension popup with name, host PIN and Start sharing" width="300" />
+      <br /><sub><b>Extension popup:</b> name, host PIN, start sharing.</sub>
+    </td>
+    <td width="66%" align="center" valign="top">
+      <img src="docs/screenshots/side-panel.png" alt="Extension side panel with invite link, join requests, people, control switches and activity" width="360" />
+      <br /><sub><b>Side panel:</b> invite link, join requests, per-guest control, drawing and activity. It isn't part of the stream.</sub>
+    </td>
+  </tr>
+</table>
 
 ## How it works
 
@@ -60,70 +141,72 @@ flowchart LR
     subgraph Host["Host · Chrome extension"]
         SP["Side panel<br/>invite · admit · control"]
         BG["Background<br/>service worker"]
-        OFF["Offscreen document<br/>tab capture · WebRTC"]
-        CS["Content script<br/>overlay · input"]
+        OFF["Offscreen document<br/>tab capture · WebRTC hub"]
+        CS["Content script<br/>overlay · media · input"]
     end
     SRV["Signaling server<br/>Node + ws · in-memory rooms"]
-    G["Guest<br/>web page"]
+    TURN["Cloudflare TURN<br/>(only when needed)"]
+    G["Guests<br/>web page"]
 
     SP <--> BG
     BG --> OFF
-    OFF <--> CS
+    OFF <-->|"port per frame"| CS
     OFF <-->|WebSocket| SRV
     G <-->|WebSocket| SRV
     OFF <-->|"WebRTC: video, audio, cursors, strokes, commands"| G
+    OFF -.-> TURN -.-> G
 ```
 
-1. The host clicks **Start sharing**. The extension captures the tab and creates a room.
-2. The host sends the invite link. A guest opens it, enters a name, and waits for the host to admit them.
-3. The signaling server introduces host and guest, then steps out of the way. Media and room
-   traffic flow **peer to peer**, using a TURN relay only when a direct connection isn't possible.
-4. Guest commands reach the host's extension, which checks the guest's permissions before applying
-   them to the shared tab. Cursors and drawings are drawn on an overlay inside that tab, so they
-   are part of the stream everyone watches.
+1. **Start.** The host enters a name (and PIN, if set) and clicks **Start sharing**. The extension
+   captures the tab in an offscreen document and creates a room on the signaling server.
+2. **Invite and admit.** A guest opens the invite link, picks a name, and waits. The host admits
+   them from the side panel.
+3. **Connect.** The server introduces host and guest, then steps aside. Media and room traffic
+   flow peer-to-peer, through Cloudflare TURN only when a direct path isn't possible.
+4. **Interact.** Guest commands reach the host's extension, which checks permissions and rate
+   limits, then applies them to the shared tab. Cursors and drawings are drawn by an overlay
+   *inside* the tab, so they're part of the stream everyone watches.
 
-Positions are measured relative to the shared tab's viewport, so a circle lands on the same spot
-no matter what size window someone watches in. See the [design doc](docs/design.md) for the full
-architecture, protocol and trade-offs.
+Positions are normalized to the shared tab's viewport, so a circle lands on the same spot no
+matter what size window someone watches in. Full details are in the [design doc](docs/design.md).
 
 ## Tech stack
 
 | Area | Tools |
 | --- | --- |
-| Extension | [WXT](https://wxt.dev) (Manifest V3), React, offscreen documents, `chrome.tabCapture`, side panel |
-| UI | [shadcn/ui](https://ui.shadcn.com) on Radix, Tailwind CSS v4, lucide icons, sonner toasts (shared `packages/ui`) |
-| Guest app | React, Vite |
-| Server | Node.js, [`ws`](https://github.com/websockets/ws), in-memory rooms |
-| Realtime | WebRTC (P2P mesh), DataChannels, Cloudflare TURN |
-| Protocol | [zod](https://zod.dev) schemas shared by every package and checked on every message |
-| Quality | TypeScript (strict), [Vitest](https://vitest.dev), Playwright, [Biome](https://biomejs.dev) |
-| Deploy | Docker, [Fly.io](https://fly.io) |
+| Extension | [WXT](https://wxt.dev) (Manifest V3), offscreen documents, `chrome.tabCapture`, side panel, runtime content scripts |
+| UI | [shadcn/ui](https://ui.shadcn.com) on Radix, Tailwind CSS v4, lucide icons, sonner toasts, shared `packages/ui` theme |
+| Guest app | React 19, Vite |
+| Server | Node.js, [`ws`](https://github.com/websockets/ws), in-memory rooms, Cloudflare Realtime TURN |
+| Protocol | [zod](https://zod.dev) schemas shared by every package and validated on every message |
+| Quality | TypeScript (strict), Vitest, Playwright (real two-browser WebRTC), Biome |
+| Hosting | Docker on [Fly.io](https://fly.io) |
 
 ## Project structure
 
 ```text
 cursor-watchalong/
 ├── apps/
-│   ├── extension/     # Chrome extension: background, offscreen capture, popup, side panel
-│   ├── server/        # Signaling server with in-memory rooms; serves the guest app
-│   └── web/           # Guest web app (/r/<roomId>#k=<secret>) + Playwright e2e
+│   ├── extension/        # Chrome extension: background, offscreen engine, content script, popup, side panel
+│   ├── server/           # Signaling server: in-memory rooms, admission, TURN credentials; serves the guest app
+│   └── web/              # Guest web app (/r/<roomId>#k=<secret>), Playwright e2e and harnesses
 ├── packages/
-│   ├── host-core/     # Host engine: signaling, WebRTC per guest, roster, permissions
-│   ├── protocol/      # Message schemas, coordinate math, shared constants
-│   └── ui/            # shadcn/ui components and the Watchalong theme
-└── docs/
-    └── design.md      # Product and technical decisions, milestones
+│   ├── host-core/        # Host engine: signaling, one WebRTC connection per guest, roster, permissions
+│   ├── protocol/         # Message schemas, coordinate math, SDP helpers, shared constants
+│   └── ui/               # shadcn/ui components and the Watchalong theme
+├── scripts/              # Icon rendering, TURN and host PIN setup for Fly
+└── docs/                 # Design doc, store listing, screenshots
 ```
 
 ## Getting started
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org) 22 or newer
+- [Node.js](https://nodejs.org) 22+
 - [pnpm](https://pnpm.io) 10
-- Google Chrome or Chromium
+- Google Chrome 119+
 
-### Install
+### Run locally
 
 ```bash
 git clone https://github.com/RealCloudyPanda/Cursor-Watchalong.git
@@ -131,123 +214,125 @@ cd Cursor-Watchalong
 pnpm install
 ```
 
-### Run locally
-
-Start each part in its own terminal:
+Start the server and the guest app in two terminals:
 
 ```bash
-pnpm dev:server   # signaling server  → http://localhost:8787
+pnpm dev:server
 ```
 
 ```bash
-pnpm dev:web      # guest web app     → http://localhost:5173
+pnpm dev:web
 ```
+
+Load the extension (development mode points at `localhost`):
 
 ```bash
-pnpm dev:ext      # opens Chromium with the extension loaded
+pnpm dev:ext
 ```
 
-To load the extension in your own Chrome instead, run `pnpm build`, open `chrome://extensions`,
-turn on **Developer mode**, click **Load unpacked**, and choose `apps/extension/.output/chrome-mv3`.
+Or build it and load `apps/extension/.output/chrome-mv3` with **Load unpacked** on
+`chrome://extensions`. A plain `pnpm build` uses the production URLs from
+`apps/extension/.env.production`.
+
+### Try it
+
+1. Open a YouTube video, click the extension, and choose **Start sharing this tab**.
+2. Open the invite link in an Incognito window, enter a name, and admit yourself from the side panel.
+3. Move the mouse, press <kbd>D</kbd> to draw, and turn on **Control** to pause and click from the guest window.
 
 ### Configuration
-
-The extension reads `WXT_*` variables from a `.env` file at build time (copy `.env.example` to
-`apps/extension/.env`). The server reads its variables from the environment, for example
-`PORT=9000 pnpm dev:server`.
 
 | Variable | Used by | Default | Purpose |
 | --- | --- | --- | --- |
 | `PORT` | server | `8787` | HTTP and WebSocket port |
-| `WXT_PUBLIC_ORIGIN` | extension | `http://localhost:5173` | Base URL for invite links |
-| `WXT_WS_URL` | extension | `ws://localhost:8787/ws` | Signaling WebSocket URL |
-| `CF_TURN_KEY_ID`, `CF_TURN_API_TOKEN` | server | *(empty)* | Cloudflare Realtime TURN credentials. Uses public STUN only when empty. |
-| `HOST_PIN` | server | *(empty = off)* | PIN required to start a session (set with `scripts/set-host-pin.sh`). Guests never need it. |
-| `ALLOWED_ORIGINS` | server | *(empty = any)* | Comma-separated origins allowed to open the WebSocket (your site and `chrome-extension://<id>`) |
+| `HOST_PIN` | server | *(off)* | PIN required to start a session. Guests never need it. Set with `scripts/set-host-pin.sh`. |
+| `CF_TURN_KEY_ID`, `CF_TURN_API_TOKEN` | server | *(off)* | Cloudflare Realtime TURN. Set with `scripts/set-turn-secrets.sh`, which verifies them first. |
+| `ALLOWED_ORIGINS` | server | *(any)* | Comma-separated origins allowed to open the WebSocket |
 | `ROOMS_PER_IP_PER_MIN`, `MAX_ROOMS` | server | `10`, `2000` | Abuse limits |
+| `WXT_PUBLIC_ORIGIN`, `WXT_WS_URL` | extension | localhost | Guest site and WebSocket URL baked into the extension |
 
 ## Scripts
 
 | Command | Description |
 | --- | --- |
-| `pnpm dev:server` | Run the signaling server with auto-reload |
-| `pnpm dev:web` | Run the guest app with hot reload |
-| `pnpm dev:ext` | Run the extension in development mode |
+| `pnpm dev:server` / `dev:web` / `dev:ext` | Run the server, guest app or extension in development |
 | `pnpm build` | Build every package |
-| `pnpm test` | Run the unit tests |
-| `pnpm --filter @watchalong/web e2e` | Run the Playwright browser tests (real WebRTC between two browsers) |
+| `pnpm test` | Unit tests (Vitest) |
+| `pnpm --filter @watchalong/web e2e` | Browser tests (Playwright, real WebRTC between browsers) |
+| `pnpm typecheck` · `pnpm lint` · `pnpm format` | Type-check, lint and format (Biome) |
 | `pnpm --filter @watchalong/extension zip` | Package the extension for the Chrome Web Store |
 | `node scripts/render-icons.mjs` | Regenerate extension icons from `apps/extension/assets/icon.svg` |
-| `pnpm typecheck` | Type-check every package |
-| `pnpm lint` | Lint and check formatting |
-| `pnpm format` | Fix formatting and safe lint issues |
+| `SCREENSHOTS=1 pnpm --filter @watchalong/web e2e readme-screenshots` | Regenerate these README screenshots |
 
 ## Testing
 
-- **Unit tests** (Vitest) cover the protocol, room server, host engine helpers, TURN credentials,
-  shortcuts and video selection.
-- **Browser tests** (Playwright, installed Chrome) run real WebRTC sessions between a scripted
-  host page and guest pages: admission, live video with decoded frames and audible audio,
-  deny/kick/leave/end, signaling reconnects, playback control and permissions, cursors, drawing
-  and fade timing, clicks, scrolling and iframe forwarding.
-- **By hand:** Chrome only allows tab capture after a real click on the extension's icon, so the
-  capture path (popup → offscreen → stream) can't be automated. Load the unpacked build, share a
-  YouTube tab, and join from another browser or device.
-
-Every milestone was also reviewed by parallel Codex (GPT-6.1 Sol) agents, and their findings were fixed.
+- **68 unit tests** cover the protocol and its limits, the room server (admission, PIN, kicks,
+  rejoin windows, room caps, reconnect snapshots), TURN credentials, rate limiting, shortcuts and
+  video selection.
+- **24 browser tests** run real WebRTC sessions between a scripted host and guest pages. They
+  check:
+  - admission and live video, with frames decoding and audio audible
+  - deny, kick, leave and end
+  - host and guest reconnects
+  - playback control and permissions
+  - cursor and stroke delivery
+  - overlay rendering and fade timing
+  - clicks, double-clicks, scroll chaining and iframe input routing
+- **By hand:** Chrome only allows tab capture after a real click on the extension icon, so that
+  step is verified manually in Chrome.
 
 ## Deployment
 
-The server also serves the built guest app, so one container runs everything.
+The server also serves the guest app, so one container runs everything. It's live at
+**https://cursor-watchalong.fly.dev**.
 
 ```bash
-fly launch --no-deploy   # first time only
-fly deploy --ha=false    # one machine: rooms live in memory
-fly scale count 1        # keep it at one if it was ever scaled up
+fly launch --no-deploy        # first time only
+fly deploy --ha=false         # one machine: rooms live in memory
+fly scale count 1             # keep it at one if it was ever scaled up
+bash scripts/set-turn-secrets.sh   # optional: Cloudflare TURN (verified before saving)
+bash scripts/set-host-pin.sh       # optional: require a PIN to host
 ```
 
-Run a **single instance**: rooms live in memory, so a restart or redeploy ends every active session.
+Store builds point at the live server through `apps/extension/.env.production`. The listing copy,
+permission justifications and assets are in [`docs/store-listing.md`](docs/store-listing.md) and
+[`docs/store-assets/`](docs/store-assets). The privacy policy is served at
+[`/privacy`](https://cursor-watchalong.fly.dev/privacy).
 
-```bash
-fly secrets set CF_TURN_KEY_ID=... CF_TURN_API_TOKEN=... ALLOWED_ORIGINS=https://cursor-watchalong.fly.dev,chrome-extension://<id>
-```
+## Security & privacy
 
-The live server runs at **https://cursor-watchalong.fly.dev** (one machine, `iad`).
-`apps/extension/.env.production` points store builds at it; run
-`pnpm --filter @watchalong/extension zip` to package. `pnpm dev:ext` still uses localhost. Listing copy and permission justifications are in
-[docs/store-listing.md](docs/store-listing.md); the privacy policy is served at `/privacy`.
+- **Invite secrets** live in the URL fragment, which browsers never send to servers. Secrets and
+  tokens are compared in constant time.
+- **The host approves every guest.** Kicked guests lose their rejoin rights, and join requests are
+  capped and expire.
+- **Permission checks happen at the host**, before any command reaches the tab. Commands, cursors
+  and strokes are rate-limited per guest, and every message is schema-validated.
+- **The extension acts only on the shared tab.** All-sites access is optional, requested when
+  sharing starts. Iframe input is routed by extension frame ID and never posted into pages, and
+  host drawing ignores synthetic events.
+- **Optional host PIN** keeps strangers from using your server and TURN relay.
+- **No database, no analytics, no accounts.** See the [privacy policy](PRIVACY.md).
 
 ## Roadmap
 
-- [x] **M0 · Foundation**: monorepo, message protocol, room server, host approval, guest join flow
-- [x] **M1 · Streaming**: 1080p tab video and audio from host to guests, reconnects
-- [x] **M2 · Playback**: play, pause and seek from guests, plus keyboard shortcuts
-- [x] **M3 · Cursors and drawing**: named cursors and fading freehand marks
-- [x] **M4 · Page control**: clicks and scrolling, per-guest control permissions
-- [x] **M5 · Launch prep**: up to four guests, Cloudflare TURN, icons, privacy policy, store listing
-- [ ] Publish: deploy to Fly.io, set TURN secrets, submit to the Chrome Web Store
-- [ ] Later: Netflix-style sync mode (each person plays their own stream)
+- [x] Live tab streaming, invites and host approval
+- [x] Playback control with keyboard shortcuts
+- [x] Named cursors and fading drawings
+- [x] Clicks, scrolling and per-guest permissions
+- [x] Cloudflare TURN, host PIN, Fly.io deployment, store assets
+- [ ] Publish to the Chrome Web Store, then lock `ALLOWED_ORIGINS` to the store extension ID
+- [ ] Sync mode for DRM sites (each person plays their own Netflix stream in lockstep)
 
 ## Known limitations
 
-- **Protected video** (Netflix, Disney+, Prime Video and similar) usually appears black in tab
-  capture. The extension warns about these sites. A playback-sync mode for them may come later.
-- **Some sites ignore simulated input.** Guest clicks are simulated by the extension, and a few
-  sites only react to real mouse events. Fullscreen and pop-ups can't be triggered remotely.
-- **The host's upload speed limits room size.** The host sends a separate stream to each guest,
-  about 4–6 Mbps each at 1080p.
-- **Guests see shared marks with a short delay**, because cursors and drawings travel inside the video stream.
-
-## Contributing
-
-Issues and pull requests are welcome. Before opening a pull request, make sure these pass:
-
-```bash
-pnpm typecheck && pnpm lint && pnpm test
-```
-
-Product or architecture changes should update [docs/design.md](docs/design.md) in the same pull request.
+- **Protected video** (Netflix, Disney+, Prime Video) usually captures as black. The extension
+  warns on those sites.
+- **Some sites ignore simulated input.** Guest clicks are synthetic events, so fullscreen and
+  pop-ups can't be triggered remotely.
+- **The host's upload limits room size.** Each guest gets its own stream, about 4–6 Mbps at 1080p,
+  so rooms are capped at 4 guests.
+- **One server instance.** Rooms live in memory, so a redeploy ends active sessions.
 
 ## License
 
-Released under the [MIT License](LICENSE).
+[MIT](LICENSE) © Cursor Watchalong contributors

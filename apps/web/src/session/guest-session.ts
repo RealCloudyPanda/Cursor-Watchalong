@@ -247,6 +247,15 @@ export class GuestSession {
           this.setState({ phase: "ended", endReason: "room-ended" });
           return;
         }
+        // Before admission, rate-limited means our join request itself was refused.
+        if (
+          message.code === "rate-limited" &&
+          (this.state.phase === "connecting" || this.state.phase === "waiting")
+        ) {
+          this.dispose();
+          this.setState({ phase: "error", errorCode: "rate-limited" });
+          return;
+        }
         // Transient: e.g. signaling while the host is reconnecting. Not fatal.
         if (message.code === "rate-limited" || message.code === "unknown-peer") return;
         this.dispose();

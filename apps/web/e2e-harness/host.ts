@@ -10,15 +10,53 @@ import type { GuestMessage, MediaState, Participant } from "@watchalong/protocol
 const canvas = document.getElementById("tab") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
 let frame = 0;
+const scenic = new URLSearchParams(location.search).has("scene");
 const draw = () => {
   frame += 1;
-  ctx.fillStyle = `hsl(${frame % 360} 60% 30%)`;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#fff";
-  ctx.font = "64px system-ui";
-  ctx.fillText(`frame ${frame}`, 80, 140);
+  if (scenic) drawScene(frame);
+  else {
+    ctx.fillStyle = `hsl(${frame % 360} 60% 30%)`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#fff";
+    ctx.font = "64px system-ui";
+    ctx.fillText(`frame ${frame}`, 80, 140);
+  }
   requestAnimationFrame(draw);
 };
+
+/** A calm animated landscape, used for README screenshots (?scene). */
+function drawScene(f: number) {
+  const { width: w, height: h } = canvas;
+  const sky = ctx.createLinearGradient(0, 0, 0, h);
+  sky.addColorStop(0, "#1e1b4b");
+  sky.addColorStop(0.55, "#be185d");
+  sky.addColorStop(1, "#f59e0b");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, w, h);
+  const sx = w * 0.62 + Math.sin(f / 240) * 20;
+  const sun = ctx.createRadialGradient(sx, h * 0.58, 10, sx, h * 0.58, 150);
+  sun.addColorStop(0, "#fde68a");
+  sun.addColorStop(0.4, "#fbbf24");
+  sun.addColorStop(1, "rgba(251,191,36,0)");
+  ctx.fillStyle = sun;
+  ctx.fillRect(0, 0, w, h);
+  const ridge = (base: number, amp: number, color: string, phase: number) => {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+    for (let x = 0; x <= w; x += 16) {
+      ctx.lineTo(
+        x,
+        base + Math.sin(x / 140 + phase) * amp + Math.sin(x / 47 + phase * 2) * amp * 0.3,
+      );
+    }
+    ctx.lineTo(w, h);
+    ctx.fill();
+  };
+  ridge(h * 0.66, 36, "#4c1d95", f / 900);
+  ridge(h * 0.76, 28, "#2e1065", 1.7 + f / 600);
+  ridge(h * 0.87, 20, "#0f0a1e", 3.1 + f / 400);
+}
 draw();
 
 const video = canvas.captureStream(30);

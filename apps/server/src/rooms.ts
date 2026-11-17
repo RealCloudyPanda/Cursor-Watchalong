@@ -239,6 +239,9 @@ export class RoomRegistry {
         this.members.delete(current.conn);
         current.conn.close();
         room.guests.delete(grant.guestId);
+      } else if (room.guests.size >= MAX_GUESTS) {
+        // Their slot was taken while they were away.
+        return this.error(conn, "room-full");
       }
       return this.admitGuest(room, { id: grant.guestId, name: message.name, conn });
     }

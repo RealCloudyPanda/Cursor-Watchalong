@@ -16,7 +16,7 @@ interface ControlBarProps {
   mediaAt: number;
   canControl: boolean;
   onCommand: (command: Media) => void;
-  /** Extra tools on the right (draw toggle in M3). */
+  /** Extra tools on the right, such as the Draw toggle. */
   tools?: ReactNode;
 }
 

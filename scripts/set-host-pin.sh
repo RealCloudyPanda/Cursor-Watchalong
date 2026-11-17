@@ -9,7 +9,10 @@ read -r -s -p "Type it again: " AGAIN; echo
 PIN="$(printf %s "$PIN" | tr -d '[:space:]')"
 AGAIN="$(printf %s "$AGAIN" | tr -d '[:space:]')"
 if [[ "$PIN" != "$AGAIN" ]]; then echo "✗ They don't match. Nothing changed." >&2; exit 1; fi
-if [[ ${#PIN} -lt 6 ]]; then echo "✗ Use at least 6 characters. Nothing changed." >&2; exit 1; fi
+if [[ ${#PIN} -lt 6 || ${#PIN} -gt 128 ]]; then
+  echo "✗ Use 6 to 128 characters. Nothing changed." >&2
+  exit 1
+fi
 
 printf 'HOST_PIN=%s\n' "$PIN" | fly secrets import -a "$APP"
 echo "✓ Host PIN saved. Enter the same PIN in the extension popup to start sessions."

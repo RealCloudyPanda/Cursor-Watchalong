@@ -6,7 +6,14 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   // Discover every dependency up front so the dev server never reloads mid-test.
-  optimizeDeps: { entries: ["index.html", "e2e-harness/host.html"] },
+  optimizeDeps: {
+    entries: [
+      "index.html",
+      "e2e-harness/host.html",
+      "e2e-harness/overlay.html",
+      "e2e-harness/extension.html",
+    ],
+  },
   test: { include: ["src/**/*.test.ts"] },
   server: {
     port: 5173,

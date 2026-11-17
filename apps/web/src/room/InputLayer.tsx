@@ -122,8 +122,12 @@ export function InputLayer({
   useEffect(() => repaint(), [repaint]);
   useEffect(
     () => () => {
+      // Reset the handles too: under StrictMode this cleanup runs before a re-mount, and a stale
+      // non-zero handle would make repaint()/schedule() think a frame is still pending forever.
       cancelAnimationFrame(drawRaf.current);
       cancelAnimationFrame(flushRaf.current);
+      drawRaf.current = 0;
+      flushRaf.current = 0;
     },
     [],
   );

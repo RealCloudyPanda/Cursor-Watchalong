@@ -79,8 +79,10 @@ in memory and dies with the room.
 
 - **Background service worker** owns the session state machine and the shared `tabId`. It calls
   `chrome.tabCapture.getMediaStreamId({ targetTabId })`, creates the offscreen document (reason
-  `USER_MEDIA`), and injects the content script into the shared tab only (`scripting.executeScript`,
-  `allFrames: true`), re-injecting on `tabs.onUpdated` status `complete`.
+  `USER_MEDIA`), and runs the content script in the shared tab: registered for all frames and
+  future navigations (`scripting.registerContentScripts`, `matchOriginAsFallback`) when the optional
+  all-sites permission is granted, plus an immediate `executeScript` into the current page. The
+  script goes inert in any other tab, and reconnects after back/forward-cache restores.
 - **Offscreen document** turns the stream id into a `MediaStream` (`chromeMediaSource: "tab"`),
   plays the audio back locally (tab capture mutes the host otherwise), holds the signaling
   WebSocket and all peer connections. Keeps the session alive while the service worker sleeps.
@@ -93,29 +95,36 @@ in memory and dies with the room.
 - Senders normalize pointer positions to the **rendered video content rect** on the guest
   (accounting for `object-fit: contain` letterboxing), giving `{x, y}` in `[0, 1]`.
 - The content script maps `{x, y}` → `x * innerWidth, y * innerHeight` of the top frame.
-- For clicks inside same-origin or cross-origin iframes, the top-frame script finds the iframe at the
-  point, translates to frame-local normalized coordinates, and posts to that frame's content script.
+- For clicks inside iframes, the top-frame script finds the iframe at the point, translates to
+  frame-local normalized coordinates (undoing CSS transforms), resolves the iframe to its extension
+  frame id (`chrome.runtime.getFrameId`), and the engine delivers the input to that frame's
+  content script over its port. Nothing is posted into the page.
 - Pure functions in `packages/protocol/src/geometry.ts`, unit-tested.
 
 ## 6. Protocol (sketch — source of truth is `packages/protocol`)
 
 **Signaling (WebSocket, client ↔ server)**
-- Host → `create-room` → server ← `room-created { roomId, secret, hostToken, iceServers }`
+- Host → `create-room { name, pin? }` → server ← `room-created { roomId, secret, hostToken, iceServers }`
+  (`bad-pin` error when `HOST_PIN` is set and doesn't match)
+- Host → `resume-host { roomId, hostToken }` ← `host-resumed { guests, pending, iceServers }`
+  (authoritative snapshot; `guests[].seq` changes whenever a guest has a new connection)
 - Guest → `join { roomId, secret, name, rejoinToken? }` → server → host `join-request { guestId, name }`
 - Host → `admit { guestId }` / `deny { guestId }` / `kick { guestId }` / `end-room`
 - Server → guest `admitted { guestId, rejoinToken, iceServers }` / `denied` / `room-ended`
 - Both → `signal { to, description | candidate }` (relayed verbatim, sender stamped by server)
 
 **Peer (DataChannel, guest ↔ host)**
-- `cursor { x, y }` (unreliable) — host rebroadcasts `cursor { id, x, y }`
+- `cursor { x, y }`, `cursor-leave` (unreliable channel); drawn by the host's in-tab overlay, so
+  other guests see them in the video
 - `stroke-start { strokeId, x, y }`, `stroke-point { strokeId, x, y }`, `stroke-end { strokeId }`
 - `media { action: play | pause | toggle | seek | seekBy | mute, value? }`
 - `pointer { kind: click | dblclick, x, y }`, `wheel { x, y, dx, dy }`
-- Host → guests: `roster { participants: [{ id, name, color, canControl }] }`,
-  `activity { by, text }` (toasts), `denied-command { reason }`
+- Host → guests: `welcome`, `roster { participants }`, `media-state { paused, currentTime, … }`,
+  `tab-info { viewport }`, `activity { by, text }` (toasts), `command-rejected { reason }`
 
-Limits: messages > 16 KB dropped; per-guest rate limits on cursor (60/s) and commands (20/s);
-server limits room creation per IP (in memory).
+Limits: messages > 16 KB (UTF-8) dropped; per-guest rate limits on cursors (60/s), stroke points
+(120/s) and commands (20/s), with stroke endings never dropped; server limits room creation per IP,
+pending requests per room (8, expiring after 10 min), connections per IP, and outbound buffering.
 
 ## 7. Session lifecycle
 

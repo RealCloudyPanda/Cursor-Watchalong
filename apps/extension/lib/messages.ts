@@ -14,7 +14,7 @@ export interface SessionState {
   drmWarning?: boolean;
   host?: HostState;
   error?: string;
-  /** Host's own draw mode (M3). */
+  /** Whether the host is in draw mode (synced with the in-page overlay). */
   drawing?: boolean;
 }
 

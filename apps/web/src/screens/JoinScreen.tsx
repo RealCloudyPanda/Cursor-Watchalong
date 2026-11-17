@@ -26,6 +26,10 @@ const ERROR_TEXT: Record<string, { title: string; body: string }> = {
     title: "This invite link is invalid",
     body: "Part of the link seems to be missing. Copy the whole link from the host and try again.",
   },
+  "rate-limited": {
+    title: "Too many people are waiting",
+    body: "The host has a lot of join requests right now. Try again in a minute.",
+  },
   "room-full": {
     title: "The room is full",
     body: "This session already has the maximum number of guests.",

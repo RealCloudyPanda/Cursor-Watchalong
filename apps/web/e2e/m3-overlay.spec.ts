@@ -31,6 +31,16 @@ test("guest pointer and strokes reach the host as cursor and stroke messages", a
   for (let i = 1; i <= 10; i++) await page.mouse.move(box.x + 100 + i * 20, box.y + 100 + i * 8);
   await page.mouse.up();
 
+  // The guest sees their own stroke immediately on their local canvas.
+  const localInk = await page.evaluate(() => {
+    const c = document.querySelector('[data-testid="input-layer"] canvas') as HTMLCanvasElement;
+    const d = c.getContext("2d")?.getImageData(0, 0, c.width, c.height).data ?? [];
+    let n = 0;
+    for (let i = 3; i < d.length; i += 4) if ((d[i] ?? 0) > 20) n++;
+    return n;
+  });
+  expect(localInk).toBeGreaterThan(100);
+
   await expect
     .poll(async () => (await host.received()).map((r) => r.message.type))
     .toEqual(expect.arrayContaining(["stroke-start", "stroke-point", "stroke-end"]));
