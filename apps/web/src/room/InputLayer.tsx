@@ -49,6 +49,9 @@ export function InputLayer({
   const active = useRef<{ id: string; stroke: LocalStroke; pointerId: number } | null>(null);
   /** The current mouse gesture began as drawing: swallow its click even if Alt is released. */
   const gestureDrew = useRef(false);
+  /** A touch drag in interact mode scrolls the shared page (phones have no wheel). */
+  const touch = useRef<{ id: number; x: number; y: number; moved: boolean } | null>(null);
+  const suppressClick = useRef(false);
   const lastCursorAt = useRef(0);
   const lastPointAt = useRef(0);
   const strokeSeq = useRef(0);
@@ -231,6 +234,10 @@ export function InputLayer({
 
   const onPointerDown = (e: React.PointerEvent) => {
     gestureDrew.current = drawing;
+    if (!drawing && e.pointerType === "touch") {
+      touch.current = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+      return;
+    }
     // One stroke at a time: ignore extra fingers/pens while a stroke is in progress.
     if (!drawing || e.button !== 0 || active.current) return;
     const p = norm(e.clientX, e.clientY);
@@ -245,6 +252,21 @@ export function InputLayer({
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
+    const t = touch.current;
+    if (t && e.pointerId === t.id) {
+      const dx = t.x - e.clientX;
+      const dy = t.y - e.clientY;
+      if (!t.moved && Math.hypot(dx, dy) < 8) return;
+      t.moved = true;
+      t.x = e.clientX;
+      t.y = e.clientY;
+      if (!canControl) return onNoControl();
+      const p = norm(e.clientX, e.clientY);
+      if (!p) return;
+      wheel.current = { dx: wheel.current.dx + dx, dy: wheel.current.dy + dy, x: p.x, y: p.y };
+      schedule();
+      return;
+    }
     const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent];
     const a = active.current;
     if (a && e.pointerId !== a.pointerId) return;
@@ -265,6 +287,10 @@ export function InputLayer({
   const onClick = (e: React.MouseEvent) => {
     const drew = gestureDrew.current;
     gestureDrew.current = false;
+    if (suppressClick.current) {
+      suppressClick.current = false;
+      return;
+    }
     if (drawing || drew) return;
     const p = norm(e.clientX, e.clientY);
     if (!p) return;
@@ -322,7 +348,14 @@ export function InputLayer({
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      onPointerUp={(e) => endStroke(e)}
+      onPointerUp={(e) => {
+        if (touch.current?.id === e.pointerId) {
+          // A swipe that scrolled shouldn't also click.
+          suppressClick.current = touch.current.moved;
+          touch.current = null;
+        }
+        endStroke(e);
+      }}
       onPointerCancel={(e) => endStroke(e)}
       onLostPointerCapture={(e) => endStroke(e)}
       onPointerLeave={() => {

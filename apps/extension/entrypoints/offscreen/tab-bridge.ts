@@ -27,6 +27,8 @@ export interface TabBridgeOptions {
 
 interface FrameLink {
   port: chrome.runtime.Port;
+  origin?: string;
+  parentOrigin?: string | null;
   score: number;
   state: MediaState | null;
 }
@@ -42,6 +44,18 @@ export class TabBridge {
   private drawing = false;
   private rosterKey = "";
   private roster: Participant[] = [];
+  /** challenge → input a parent frame registered, waiting for its child to claim it (2s). */
+  private pendingInputs = new Map<
+    string,
+    { input: InjectedInput; from: number; fromOrigin?: string; at: number }
+  >();
+
+  private prunePending() {
+    const now = Date.now();
+    for (const [k, v] of this.pendingInputs) {
+      if (now - v.at > 2_000 || !this.frames.has(v.from)) this.pendingInputs.delete(k);
+    }
+  }
 
   constructor(
     readonly tabId: number,
@@ -139,18 +153,36 @@ export class TabBridge {
           this.options.onViewport({ width: message.width, height: message.height });
         }
         break;
-      case "frame-input":
-        // Our own content script resolved the iframe element to this frame id; deliver only to
-        // a different, connected frame of the shared tab.
-        if (
-          Number.isInteger(message.frameId) &&
-          message.frameId !== frameId &&
-          this.frames.has(message.frameId) &&
-          validInput(message.input)
-        ) {
-          this.post(message.frameId, { type: "inject", input: message.input });
+      case "frame-info":
+        if (typeof message.origin === "string") {
+          link.origin = message.origin;
+          link.parentOrigin =
+            typeof message.parentOrigin === "string" ? message.parentOrigin : null;
         }
         break;
+      case "frame-input": {
+        if (typeof message.challenge !== "string" || !validInput(message.input)) return;
+        this.prunePending();
+        if (this.pendingInputs.size < 32) {
+          this.pendingInputs.set(message.challenge, {
+            input: message.input,
+            from: frameId,
+            fromOrigin: link.origin,
+            at: Date.now(),
+          });
+        }
+        break;
+      }
+      case "probe-ack": {
+        this.prunePending();
+        const pending = this.pendingInputs.get(message.challenge);
+        if (!pending || pending.from === frameId) return;
+        // Only the requesting frame's own child may claim it: its parent origin must match.
+        if (!pending.fromOrigin || link.parentOrigin !== pending.fromOrigin) return;
+        this.pendingInputs.delete(message.challenge);
+        this.post(frameId, { type: "inject", input: pending.input });
+        break;
+      }
       case "draw-key":
         if (frameId !== 0 && ["alt-down", "alt-up", "escape"].includes(message.key)) {
           this.post(0, { type: "draw-key", key: message.key });

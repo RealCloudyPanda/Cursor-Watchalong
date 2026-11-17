@@ -1,20 +1,15 @@
-import { Brand } from "@watchalong/ui/components/brand";
 import type { ReactNode } from "react";
 import policy from "../../../../PRIVACY.md?raw";
+import { SiteLayout } from "../site/SiteLayout";
 
 /** Renders PRIVACY.md (the Chrome Web Store privacy policy URL points here: /privacy). */
 export function PrivacyPage() {
   return (
-    <div className="min-h-svh">
-      <header className="border-b border-border/60 px-6 py-5">
-        <a href="/" aria-label="Cursor Watchalong home">
-          <Brand />
-        </a>
-      </header>
-      <main className="mx-auto max-w-2xl space-y-4 px-6 py-10 text-sm leading-relaxed">
+    <SiteLayout>
+      <article className="mx-auto max-w-2xl space-y-4 px-5 py-16 text-sm leading-relaxed">
         {renderMarkdown(policy)}
-      </main>
-    </div>
+      </article>
+    </SiteLayout>
   );
 }
 

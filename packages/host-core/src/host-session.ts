@@ -130,6 +130,15 @@ export class HostSession {
   }
 
   start(): void {
+    // If the room isn't created within 15s (server unreachable or stalled), give up cleanly
+    // so capture is released instead of spinning forever.
+    this.deadlineTimer = setTimeout(() => {
+      this.deadlineTimer = null;
+      if (!this.hostToken && this.state.status !== "ended") {
+        this.setState({ error: "Couldn't reach the Watchalong server. Try again in a moment." });
+        this.end("server-lost");
+      }
+    }, 15_000);
     this.connect();
     this.pingTimer = setInterval(() => this.sendServer({ type: "ping" }), 20_000);
   }
@@ -275,6 +284,8 @@ export class HostSession {
   private handleServer(message: ServerMessage) {
     switch (message.type) {
       case "room-created":
+        if (this.deadlineTimer) clearTimeout(this.deadlineTimer);
+        this.deadlineTimer = null;
         this.online = true;
         this.hostToken = message.hostToken;
         this.hostId = message.hostId;

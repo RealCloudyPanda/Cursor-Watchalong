@@ -13,7 +13,7 @@ Screen sharing where guests interact with the page instead of only watching it.<
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?logo=googlechrome&logoColor=white" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white" />
   <img alt="WebRTC" src="https://img.shields.io/badge/WebRTC-peer--to--peer-333?logo=webrtc&logoColor=white" />
-  <img alt="Tests" src="https://img.shields.io/badge/tests-68%20unit%20%C2%B7%2024%20browser-22c55e" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-68%20unit%20%C2%B7%2028%20browser-22c55e" />
 </p>
 
 <p>
@@ -116,7 +116,7 @@ It's built for watching videos together: spot a detail, pause, circle it, hit pl
     </td>
     <td width="50%" align="center">
       <img src="docs/screenshots/landing.png" alt="Landing page" />
-      <br /><sub><b>Landing page</b> at cursor-watchalong.fly.dev.</sub>
+      <br /><sub><b>Website:</b> an interactive demo, FAQ, extension page and privacy policy.</sub>
     </td>
   </tr>
 </table>
@@ -269,7 +269,7 @@ Or build it and load `apps/extension/.output/chrome-mv3` with **Load unpacked** 
 - **68 unit tests** cover the protocol and its limits, the room server (admission, PIN, kicks,
   rejoin windows, room caps, reconnect snapshots), TURN credentials, rate limiting, shortcuts and
   video selection.
-- **24 browser tests** run real WebRTC sessions between a scripted host and guest pages. They
+- **28 browser tests** run real WebRTC sessions between a scripted host and guest pages. They
   check:
   - admission and live video, with frames decoding and audio audible
   - deny, kick, leave and end

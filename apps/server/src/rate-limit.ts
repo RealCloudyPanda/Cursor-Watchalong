@@ -18,7 +18,8 @@ export class RateLimiter {
     return w.count <= this.limit;
   }
 
-  private sweep(now: number) {
+  /** Forget windows that have expired, so keys (IP addresses) aren't kept around. */
+  sweep(now = Date.now()) {
     for (const [key, w] of this.windows) {
       if (now - w.start >= this.windowMs) this.windows.delete(key);
     }

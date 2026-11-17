@@ -5,31 +5,47 @@
  * `debugger` permission.
  *
  * When the point lands on an <iframe>, the input is handed to that frame's content script
- * through the extension, addressed by frame id, so pages can neither see nor redirect it.
+ * through the extension (see InputInjectorOptions), so pages can neither see nor redirect it.
  */
 
 export type InjectedInput =
   | { kind: "click" | "dblclick"; x: number; y: number }
   | { kind: "wheel"; x: number; y: number; dx: number; dy: number };
 
+export const PROBE_KEY = "__watchalongProbe";
+
 /**
- * Input for an iframe never travels through page-visible messages. The parent's content script
- * resolves the iframe element to its extension frame id (chrome.runtime.getFrameId) and the
- * engine delivers the input to exactly that frame over its extension port.
+ * Input for an iframe never travels through page-visible messages. The parent registers it with
+ * the engine under a one-time challenge and posts only the challenge to the child frame. The
+ * child's content script claims it over its own extension port, and the engine only delivers it
+ * if that frame's real parent (location.ancestorOrigins, which pages can't fake) is the frame
+ * that asked, within two seconds, once.
  */
 export interface InputInjectorOptions {
   /** Our own overlay element, which must never be the click target. */
   ignore: () => Element | null;
-  /** Deliver input to the child frame with this extension frame id. */
-  forwardToFrame: (frameId: number, input: InjectedInput) => void;
-  /** Resolve an iframe element to its frame id (chrome.runtime.getFrameId). */
-  frameIdOf: (frame: HTMLIFrameElement | HTMLFrameElement) => number;
+  /** Register input for the child frame that will acknowledge `challenge`. */
+  forwardToFrame: (challenge: string, input: InjectedInput) => void;
+  /** This frame received a probe from its parent: claim it. */
+  ackProbe: (challenge: string) => void;
 }
 
 export class InputInjector {
-  constructor(private options: InputInjectorOptions) {}
+  private onMessage = (event: MessageEvent) => {
+    if (window.parent === window || event.source !== window.parent) return;
+    const challenge = (event.data as Record<string, unknown> | null)?.[PROBE_KEY];
+    if (typeof challenge === "string" && /^[0-9a-f-]{36}$/.test(challenge)) {
+      this.options.ackProbe(challenge);
+    }
+  };
 
-  dispose() {}
+  constructor(private options: InputInjectorOptions) {
+    window.addEventListener("message", this.onMessage);
+  }
+
+  dispose() {
+    window.removeEventListener("message", this.onMessage);
+  }
 
   inject(input: InjectedInput) {
     const cx = input.x * window.innerWidth;
@@ -75,14 +91,9 @@ export class InputInjector {
     const w = frame.clientWidth;
     const h = frame.clientHeight;
     if (w <= 0 || h <= 0) return;
-    let frameId: number;
-    try {
-      frameId = this.options.frameIdOf(frame);
-    } catch {
-      return;
-    }
-    if (frameId < 0) return;
-    this.options.forwardToFrame(frameId, { ...input, x: clamp01(lx / w), y: clamp01(ly / h) });
+    const challenge = crypto.randomUUID();
+    this.options.forwardToFrame(challenge, { ...input, x: clamp01(lx / w), y: clamp01(ly / h) });
+    frame.contentWindow.postMessage({ [PROBE_KEY]: challenge }, "*");
   }
 
   private click(target: Element, cx: number, cy: number, double: boolean) {

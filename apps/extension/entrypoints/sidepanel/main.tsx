@@ -63,6 +63,13 @@ function SidePanel() {
         <div className="flex flex-col items-center gap-3 py-16 text-center">
           <Loader2 className="size-6 animate-spin text-primary" />
           <p className="text-sm text-muted-foreground">Starting your session…</p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => sendExt({ target: "background", type: "stop-sharing" })}
+          >
+            Cancel
+          </Button>
         </div>
       </Frame>
     );

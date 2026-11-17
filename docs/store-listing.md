@@ -28,7 +28,7 @@ Social & Communication
 | `tabCapture` | Captures the video and audio of the single tab the host chooses to share. |
 | `offscreen` | Hosts the capture stream and WebRTC connections, which MV3 service workers can't hold. |
 | `scripting` | Injects the shared overlay (cursors, drawings) and input handling into the shared tab only. |
-| `storage` | Remembers the host's display name and the current session state for the side panel. |
+| `storage` | Remembers the host's display name and host PIN on this device, and the live session state shown in the side panel. |
 | `sidePanel` | Shows session controls (invite link, guest approvals, permissions) without appearing in the shared video. |
 | `activeTab` | Grants access to the tab the host clicked the extension on. |
 | Optional host permission `<all_urls>` | Requested only when sharing starts, so the overlay keeps working after the shared tab navigates to another site and inside embedded video frames. The extension acts only on the tab being shared. |

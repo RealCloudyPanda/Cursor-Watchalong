@@ -76,12 +76,18 @@ const http = createServer((req, res) => {
   const requested = normalize(join(WEB_DIST, pathname));
   const isFile =
     requested.startsWith(WEB_DIST + sep) && existsSync(requested) && statSync(requested).isFile();
+  // Missing static assets get a real 404; unknown pages get the app's 404 screen with status 404.
+  if (!isFile && extname(pathname)) {
+    res.writeHead(404, { "content-type": "text/plain" }).end("Not found");
+    return;
+  }
+  const appRoute = /^\/(r\/[A-Za-z0-9_-]{10,32}\/?|privacy\/?|extension\/?)?$/.test(pathname);
   const file = isFile ? requested : join(WEB_DIST, "index.html");
   if (!existsSync(file)) {
     res.writeHead(404).end("Guest app not built. Run `pnpm --filter @watchalong/web build`.");
     return;
   }
-  res.writeHead(200, {
+  res.writeHead(isFile || appRoute ? 200 : 404, {
     "content-type": MIME[extname(file)] ?? "application/octet-stream",
     "referrer-policy": "no-referrer",
     "x-content-type-options": "nosniff",
@@ -194,6 +200,13 @@ ice.start().finally(() => {
     );
   });
 });
+
+// Rate-limit windows are keyed by IP address; drop expired ones every minute.
+const sweeper = setInterval(() => {
+  createLimiter.sweep();
+  messageLimiter.sweep();
+}, 60_000);
+sweeper.unref();
 
 const shutdown = () => {
   ice.stop();

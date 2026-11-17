@@ -77,11 +77,13 @@ export default defineContentScript({
         // Every frame gets an injector: child frames receive clicks forwarded by their parent.
         injector = new InputInjector({
           ignore: () => overlay?.element ?? null,
-          forwardToFrame: (targetFrameId, input) =>
-            post({ type: "frame-input", frameId: targetFrameId, input }),
-          // Chrome 106+; not yet in @types/chrome.
-          frameIdOf: (frame) =>
-            (chrome.runtime as unknown as { getFrameId(t: Element): number }).getFrameId(frame),
+          forwardToFrame: (challenge, input) => post({ type: "frame-input", challenge, input }),
+          ackProbe: (challenge) => post({ type: "probe-ack", challenge }),
+        });
+        post({
+          type: "frame-info",
+          origin: location.origin,
+          parentOrigin: location.ancestorOrigins?.[0] ?? null,
         });
         if (!isTop) {
           // Keyboard events don't leave a focused iframe, so relay the draw keys to the top frame.

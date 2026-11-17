@@ -29,7 +29,10 @@ export type FromTab =
   | { type: "drawing-changed"; drawing: boolean }
   /** Alt/Escape pressed while focus is inside a child frame, relayed to the top overlay. */
   | { type: "draw-key"; key: DrawKey }
-  /** Deliver input to a child frame (resolved with chrome.runtime.getFrameId). */
-  | { type: "frame-input"; frameId: number; input: InjectedInput };
+  /** Sent once per frame: its origin and its parent's origin (location.ancestorOrigins). */
+  | { type: "frame-info"; origin: string; parentOrigin: string | null }
+  /** Input for whichever child frame acknowledges `challenge`. */
+  | { type: "frame-input"; challenge: string; input: InjectedInput }
+  | { type: "probe-ack"; challenge: string };
 
 export type DrawKey = "alt-down" | "alt-up" | "escape";
